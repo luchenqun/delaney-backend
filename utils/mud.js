@@ -1,6 +1,14 @@
 import { ethers } from 'ethers'
 import bn from 'bignumber.js'
 
+const formatDateISO = (date) => {
+  // Convert the date to ISO string
+  const isoString = date.toISOString()
+  // Split at the "T" character to get the date part
+  const formattedDate = isoString.split('T')[0]
+  return formattedDate
+}
+
 const getPrice = (sqrtPriceX96, decimal0, decimal1) => {
   sqrtPriceX96 = bn(sqrtPriceX96)
   decimal0 = bn(decimal0)
@@ -60,7 +68,8 @@ export const mudPrice = async (blockTag) => {
   const decimal0 = '6' // MUD小数点
   const decimal1 = '6' // USDT小数点
   const price = getPrice(slot0.sqrtPriceX96.toString(), decimal0, decimal1)
-  console.log(price)
 
-  return price
+  const block = await provider.getBlock(blockTag, false)
+
+  return { ...price, timestamp: block.timestamp, hash: block.hash, time: new Date(block.timestamp * 1000).toISOString() }
 }
