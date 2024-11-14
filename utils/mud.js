@@ -1,42 +1,40 @@
 import { ethers } from 'ethers'
+import bn from 'bignumber.js'
 
-const decodeSqrtPriceX96ToP = (sqrtPriceX96) => {
-  // Q64.96 定点数 2^96
-  const q96 = Math.pow(2, 96)
-  // 计算 sqrtPriceRatio
-  const sqrtPriceRatio = sqrtPriceX96 / q96
-  // P = (sqrtPriceRatio)^2
-  const P = Math.pow(sqrtPriceRatio, 2)
-  return P
-}
+const getPrice = (sqrtPriceX96, decimal0, decimal1) => {
+  sqrtPriceX96 = bn(sqrtPriceX96)
+  decimal0 = bn(decimal0)
+  decimal1 = bn(decimal1)
 
-// 将P根据代币的精度调整成真实价格
-const adjustPByDecimal = (price, baseDecimalPow, quoteDecimalPow, quoteIs0) => {
-  let decimal0Pow, decimal1Pow
-  if (quoteIs0) {
-    decimal0Pow = quoteDecimalPow
-    decimal1Pow = baseDecimalPow
-  } else {
-    decimal0Pow = baseDecimalPow
-    decimal1Pow = quoteDecimalPow
+  const buyOneOfToken0 = sqrtPriceX96
+    .div(bn(2).pow(96))
+    .pow(2)
+    .div(bn(10).pow(decimal1.toNumber()).div(bn(10).pow(decimal0.toNumber())))
+  const buyOneOfToken1 = bn(1).div(buyOneOfToken0)
+
+  // Convert to wei
+  // const buyOneOfToken0Wei = bn(Math.floor(buyOneOfToken0.multipliedBy(10 ** decimal1.toNumber()))).toFormat(0, bn.ROUND_DOWN, { decimalSeparator: '' })
+  // const buyOneOfToken1Wei = bn(Math.floor(buyOneOfToken1.multipliedBy(10 ** decimal0.toNumber()))).toFormat(0, bn.ROUND_DOWN, { decimalSeparator: '' })
+
+  const fee = 0.994
+  const buyUsdt = parseFloat(parseFloat(buyOneOfToken0.toFixed(6) * fee).toFixed(6))
+  const buyMud = parseFloat(parseFloat(buyOneOfToken1.toFixed(6) * fee).toFixed(6))
+  const buyUsdtWei = buyUsdt * 10 ** parseInt(decimal0)
+  const buyMudWei = buyMud * 10 ** parseInt(decimal1)
+  const price = {
+    buyUsdt,
+    buyMud,
+    buyUsdtWei,
+    buyMudWei
   }
-
-  const adjustment = decimal0Pow / decimal1Pow
-  price *= adjustment
-
-  // 如果Quote是token0，计算1/price
-  if (quoteIs0) {
-    price = 1 / price
-  }
-
   return price
 }
 
 export const mudPrice = async (blockTag) => {
   const provider = new ethers.JsonRpcProvider(
-    // 'https://polygon.drpc.org' ||
-    // 'https://polygon-mainnet.nodereal.io/v1/c6a4d008708642b097e1d7c9372a3b67' ||
-    'https://omniscient-floral-wish.matic.quiknode.pro/c8744f4ef0f1f40210d5d68ac6170281c379b088'
+    'https://polygon.drpc.org' ||
+      // 'https://polygon-mainnet.nodereal.io/v1/c6a4d008708642b097e1d7c9372a3b67' ||
+      'https://omniscient-floral-wish.matic.quiknode.pro/c8744f4ef0f1f40210d5d68ac6170281c379b088'
   )
   const poolAddress = '0x5338968f9646e4a865d76e07c2a6e340dd3ac462'
   const poolAbi = [
@@ -59,8 +57,10 @@ export const mudPrice = async (blockTag) => {
 
   const poolContract = new ethers.Contract(poolAddress, poolAbi, provider)
   const slot0 = await poolContract.slot0({ blockTag })
-  const realPrice = decodeSqrtPriceX96ToP(parseFloat(slot0.sqrtPriceX96.toString()))
-  const price = adjustPByDecimal(realPrice, 1e6, 1e6, true)
+  const decimal0 = '6' // MUD小数点
+  const decimal1 = '6' // USDT小数点
+  const price = getPrice(slot0.sqrtPriceX96.toString(), decimal0, decimal1)
+  console.log(price)
 
-  return price / 1.005 // 需要一些手续费
+  return price
 }
