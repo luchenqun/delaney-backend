@@ -19,4 +19,16 @@ export default async function (fastify, opts) {
 
     return { ...price, blockTag }
   })
+
+  fastify.get('/sqlite', function (request, reply) {
+    const { num } = fastify.db.prepare(`SELECT Count(*) AS num FROM t`).get()
+
+    const rows = fastify.db.prepare('SELECT * FROM t LIMIT 10').all()
+
+    reply.send({
+      message: 'case 2: these results from db file created by connection in the same file as the plugin',
+      'count of rows': num,
+      rows
+    })
+  })
 }
