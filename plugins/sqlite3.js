@@ -1,32 +1,9 @@
 import fp from 'fastify-plugin'
 import Database from 'better-sqlite3'
 
-const _init = (path) => {
-  const db = new Database(path)
-
-  let stm = 'CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY, txt TEXT)'
-  db.prepare(stm).run()
-
-  stm = 'SELECT Count(*) AS num FROM t'
-  const { num } = db.prepare(stm).get()
-
-  if (!num) {
-    stm = db.prepare('INSERT INTO t (txt) VALUES (?)')
-    for (let i = 0; i < 100; i++) {
-      stm.run(Math.random().toString(36).slice(2))
-    }
-  }
-}
-
 const _createDbConnection = (Database, options) => {
-  //
   // If path to db exists, use that else create a db in memory
-  //
   const file = options.pathToDb ? options.pathToDb : ':memory:'
-
-  if (options.pathToDb) {
-    _init(options.pathToDb)
-  }
 
   const betterSqlite3Opts = options.betterSqlite3Opts || {}
   return new Database(file, betterSqlite3Opts)

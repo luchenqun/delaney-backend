@@ -1,6 +1,8 @@
 import path from 'path'
 import AutoLoad from '@fastify/autoload'
 import { fileURLToPath } from 'url'
+import { fastifySchedulePlugin } from '@fastify/schedule'
+import { SimpleIntervalJob, AsyncTask } from 'toad-scheduler'
 import Database from 'better-sqlite3'
 
 const _initDatabase = (path) => {
@@ -36,6 +38,7 @@ const fastifyOpts = {
 export default async function (fastify, opts) {
   // Place here your custom code!
   opts = Object.assign(fastifyOpts, opts)
+  fastify.register(fastifySchedulePlugin)
 
   // Do not touch the following lines
 
@@ -54,9 +57,20 @@ export default async function (fastify, opts) {
     options: Object.assign({}, opts)
   })
 
+  const task = new AsyncTask(
+    'simple task',
+    async (taskId, jobId) => {
+      const { num } = fastify.db.prepare(`SELECT Count(*) AS num FROM t`).get()
+      console.log('simple task run', taskId, jobId, num)
+    },
+    (err) => {}
+  )
+  const job = new SimpleIntervalJob({ seconds: 30 }, task)
+
   fastify.ready().then(
     () => {
       _initDatabase(__dbPath)
+      fastify.scheduler.addSimpleIntervalJob(job)
       console.log('successfully booted!')
     },
     (err) => {
