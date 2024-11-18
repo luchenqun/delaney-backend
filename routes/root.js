@@ -31,4 +31,31 @@ export default async function (fastify, opts) {
       rows
     })
   })
+
+  // curl -X POST http://localhost:3000/sqlites -H "Content-Type: application/json" -d '{"dataArray":["111111","2222","3333","4444"]}'
+  fastify.post('/sqlites', async (request, reply) => {
+    console.log("sqlites==> ", request.body)
+    const {dataArray} = request.body 
+
+    const insertTransaction = fastify.db.transaction((dataArray) => {
+      const insert = fastify.db.prepare('INSERT INTO t (txt) VALUES (?)')
+
+      for (const data of dataArray) {
+        console.log("input:", data)
+       
+        insert.run(data)
+      }
+    })
+    try {
+      insertTransaction(dataArray)
+    }catch(error) {
+      console.error('error：', error)
+    }
+ 
+  })
+  //curl -X GET http://localhost:3000/sqlites
+  fastify.get('/sqlites', async (request, reply) => {
+    const find = fastify.db.prepare("SELECT * FROM t")
+    reply.send(find.all())
+  })
 }
