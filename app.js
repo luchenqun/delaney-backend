@@ -15,7 +15,7 @@ const __dbCreateTablePath = path.join(__dirname, 'db/delaney.sql')
 export const options = {}
 
 const fastifyOpts = {
-  logger: true,
+  logger: false,
   class: Database,
   pathToDb: __dbPath
 }
@@ -48,7 +48,9 @@ export default async function (fastify, opts) {
       // const { num } = fastify.db.prepare(`SELECT Count(*) AS num FROM t`).get()
       // console.log('simple task run', taskId, jobId, num)
     },
-    (err) => {}
+    (err) => {
+      console.log(err)
+    }
   )
   const job = new SimpleIntervalJob({ seconds: 30 }, task)
 
@@ -56,7 +58,7 @@ export default async function (fastify, opts) {
     () => {
       // create table  init
       const sqliteCreateTableFile = fs.readFileSync(__dbCreateTablePath, 'utf8')
-      const db = new Database(__dbPath, { verbose: console.log })
+      const db = new Database(__dbPath, { verbose: () => {} })
       db.exec(sqliteCreateTableFile)
 
       fastify.scheduler.addSimpleIntervalJob(job)

@@ -23,15 +23,15 @@ CREATE TABLE
   IF NOT EXISTS user (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     address CHAR(42) UNIQUE NOT NULL,
-    parent CHAR(42) NOT NULL,
+    parent CHAR(42) DEFAULT "",
     star INT NOT NULL DEFAULT 0,
     min_star INT NOT NULL DEFAULT 0,
     sub_mud INT NOT NULL DEFAULT 0,
     sub_usdt INT NOT NULL DEFAULT 0,
     team_mud INT NOT NULL DEFAULT 0,
     team_usdt INT NOT NULL DEFAULT 0,
-    ref VARCHAR(8) NOT NULL DEFAULT "",
-    parent_ref VARCHAR(8) NOT NULL DEFAULT ""
+    ref VARCHAR(6) NOT NULL DEFAULT "",
+    parent_ref VARCHAR(6) NOT NULL DEFAULT ""
   );
 
 INSERT

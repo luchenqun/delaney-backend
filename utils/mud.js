@@ -1,14 +1,6 @@
 import { ethers } from 'ethers'
 import bn from 'bignumber.js'
 
-const formatDateISO = (date) => {
-  // Convert the date to ISO string
-  const isoString = date.toISOString()
-  // Split at the "T" character to get the date part
-  const formattedDate = isoString.split('T')[0]
-  return formattedDate
-}
-
 const getPrice = (sqrtPriceX96, decimal0, decimal1) => {
   sqrtPriceX96 = bn(sqrtPriceX96)
   decimal0 = bn(decimal0)

@@ -14,12 +14,12 @@ const fastifyBetterSqlite3 = (fastify, opts, next) => {
   let db
 
   if (opts.class) {
-    const Database_imported = opts.class
+    const DatabaseImported = opts.class
     // options has a ready made db connection, so use it if it is valid
-    if (opts.connection && opts.connection instanceof Database_imported) {
+    if (opts.connection && opts.connection instanceof DatabaseImported) {
       db = opts.connection
     } else {
-      db = _createDbConnection(Database_imported, opts)
+      db = _createDbConnection(DatabaseImported, opts)
     }
   } else {
     // create a new db connection using the inline Database class and the options passed in
