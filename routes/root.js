@@ -1,13 +1,14 @@
 import { mudPrice } from '../utils/mud.js'
 import { ErrorInputCode, ErrorInputMsg, ErrorDataNotExistCode, ErrorDataNotExistMsg, ErrorBusinessCode, ErrorBusinessMsg } from '../utils/error.js'
 import { randRef } from '../utils/index.js'
-import { ZeroAddress, ZeroHash } from 'ethers'
+import { ZeroAddress, ZeroHash, Wallet } from 'ethers'
 
 export default async function (fastify, opts) {
   fastify.get('/', async function (request, reply) {
     return { root: true }
   })
 
+  // 获取mud的价格
   fastify.get('/mud-price', async function (request, reply) {
     let blockTag = 'latest'
 
@@ -23,8 +24,23 @@ export default async function (fastify, opts) {
     return { ...price, blockTag }
   })
 
+  // 获取配置列表信息
+  // curl http://127.0.0.1:3000/configs | jq
+  fastify.get('/configs', async function (request, reply) {
+    const { db } = fastify
+    const configs = db.prepare('SELECT * FROM config').all()
+
+    return {
+      code: 0,
+      msg: '',
+      data: {
+        items: configs
+      }
+    }
+  })
+
   // 创建用户
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/create-user
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/create-user | jq
   fastify.post('/create-user', function (request, reply) {
     const { address } = request.body
     const { db } = fastify
@@ -51,7 +67,23 @@ export default async function (fastify, opts) {
     })
   })
 
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "parent_ref": "888888"}' http://127.0.0.1:3000/bind-parent-ref
+  // 获取用户列表
+  // curl http://127.0.0.1:3000/users | jq
+  fastify.get('/users', async function (request, reply) {
+    const { db } = fastify
+    const users = db.prepare('SELECT * FROM user').all()
+
+    return {
+      code: 0,
+      msg: '',
+      data: {
+        items: users
+      }
+    }
+  })
+
+  // 绑定邀请码
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "parent_ref": "888888"}' http://127.0.0.1:3000/bind-parent-ref | jq
   fastify.post('/bind-parent-ref', function (request, reply) {
     const { address, parent_ref } = request.body
     const { db } = fastify
@@ -105,5 +137,91 @@ export default async function (fastify, opts) {
       msg: '',
       data: Object.assign(user, { parent_ref, parent: parent.address })
     })
+  })
+
+  // 用户获取质押的签名
+  // https://coinsbench.com/how-to-sign-a-message-with-ethers-js-v6-and-then-validate-it-in-solidity-89cd4f172dfd
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "mud": 888888}' http://127.0.0.1:3000/sign-delegate
+  fastify.post('/sign-delegate', async function (request, reply) {
+    const { address, mud } = request.body
+    console.log({ address, mud })
+
+    if (!address || !mud) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'address or mud',
+        data: {}
+      }
+    }
+
+    const mudPrice = (new Date().getMinutes() + 1) * 100000 // TODO 实时获取
+    const usdt = parseInt(mud) * mudPrice
+
+    const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
+    const signer = new Wallet(privateKey)
+    const create_at = new Date().getTime() / 1000 // 秒级就够了
+
+    const signature = await signer.signMessage(address + mud + usdt + create_at)
+
+    reply.send({
+      code: 0,
+      msg: '',
+      data: { address, mud, usdt, create_at, signature }
+    })
+  })
+
+  // 用户质押
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "mud": 888888, "hash": "0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156"}' http://127.0.0.1:3000/delegate
+  fastify.post('/delegate', function (request, reply) {
+    const { address, mud, hash } = request.body
+    const { db } = fastify
+    console.log({ address, mud, hash })
+
+    if (!address || !mud || !hash) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'address or mud or hash',
+        data: {}
+      }
+    }
+
+    const mudPrice = (new Date().getMinutes() + 1) * 100000 // TODO 实时获取
+    const usdt = parseInt(mud) * mudPrice
+
+    // 获取所有的配置信息
+    const configs = db.prepare('SELECT * FROM config').all()
+    const config = {}
+    for (const item of configs) {
+      config[item.key] = item.value
+    }
+
+    // 将质押信息插入数据库
+    const period_day = config['period_day']
+    const period_num = config['period_num']
+    const period_reward_ratio = config['period_reward_ratio']
+    const stmt = db.prepare('INSERT INTO delegate (address, mud, hash, usdt) VALUES (?, ?, ?, ?)')
+    const info = stmt.run(address, mud, hash, usdt)
+    console.log(info)
+
+    reply.send({
+      code: 0,
+      msg: '',
+      data: Object.assign(user, { parent_ref, parent: parent.address })
+    })
+  })
+
+  // 获取用户列表
+  // curl http://127.0.0.1:3000/delegates | jq
+  fastify.get('/delegates', async function (request, reply) {
+    const { db } = fastify
+    const delegates = db.prepare('SELECT * FROM delegate').all()
+
+    return {
+      code: 0,
+      msg: '',
+      data: {
+        items: delegates
+      }
+    }
   })
 }

@@ -31,7 +31,8 @@ CREATE TABLE
     team_mud INT NOT NULL DEFAULT 0,
     team_usdt INT NOT NULL DEFAULT 0,
     ref VARCHAR(6) NOT NULL DEFAULT "",
-    parent_ref VARCHAR(6) NOT NULL DEFAULT ""
+    parent_ref VARCHAR(6) NOT NULL DEFAULT "",
+    create_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
 INSERT
@@ -69,14 +70,14 @@ CREATE TABLE
     address CHAR(42) NOT NULL,
     mud INT NOT NULL DEFAULT 0,
     usdt INT NOT NULL DEFAULT 0,
-    hash CHAR(66) NOT NULL,
+    hash CHAR(66) UNIQUE NOT NULL,
     period_day INT NOT NULL DEFAULT 15,
     period_num INT NOT NULL DEFAULT 8,
     period_reward_ratio INT NOT NULL DEFAULT 5,
     status INT NOT NULL DEFAULT 0,
-    create_at TIMESTAMP NOT NULL,
     fail_at TIMESTAMP NOT NULL,
-    end_at TIMESTAMP NOT NULL
+    end_at TIMESTAMP NOT NULL,
+    create_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
 -- 动态奖励
@@ -89,8 +90,8 @@ CREATE TABLE
     type INT NOT NULL DEFAULT 0,
     hash CHAR(66) NOT NULL,
     status INT NOT NULL DEFAULT 0,
-    create_at TIMESTAMP NOT NULL,
-    claim_at TIMESTAMP NOT NULL
+    claim_at TIMESTAMP NOT NULL,
+    create_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
 -- 静态奖励
@@ -103,8 +104,8 @@ CREATE TABLE
     type INT NOT NULL DEFAULT 0,
     hash CHAR(66) NOT NULL,
     status INT NOT NULL DEFAULT 0,
-    create_at TIMESTAMP NOT NULL,
-    claim_at TIMESTAMP NOT NULL
+    claim_at TIMESTAMP NOT NULL,
+    create_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
 -- 配置
@@ -141,6 +142,6 @@ CREATE TABLE
     type INT NOT NULL DEFAULT 0,
     title VARCHAR(128) NOT NULL,
     content VARCHAR(2048) NOT NULL,
-    create_at TIMESTAMP NOT NULL,
-    is_read BOOLEAN NOT NULL DEFAULT false
+    is_read BOOLEAN NOT NULL DEFAULT false,
+    create_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
