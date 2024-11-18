@@ -4,27 +4,12 @@ import { fileURLToPath } from 'url'
 import { fastifySchedulePlugin } from '@fastify/schedule'
 import { SimpleIntervalJob, AsyncTask } from 'toad-scheduler'
 import Database from 'better-sqlite3'
-
-const _initDatabase = (path) => {
-  const db = new Database(path)
-
-  let stm = 'CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY, txt TEXT)'
-  db.prepare(stm).run()
-
-  stm = 'SELECT Count(*) AS num FROM t'
-  const { num } = db.prepare(stm).get()
-
-  if (!num) {
-    stm = db.prepare('INSERT INTO t (txt) VALUES (?)')
-    for (let i = 0; i < 100; i++) {
-      stm.run(Math.random().toString(36).slice(2))
-    }
-  }
-}
+import fs from 'fs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const __dbPath = path.join(__dirname, 'db.sqlite')
+const __dbPath = path.join(__dirname, 'db/db.sqlite')
+const __dbCreateTablePath = path.join(__dirname, 'db/delaney.sql')
 
 // Pass --options via CLI arguments in command to enable these options.
 export const options = {}
@@ -60,8 +45,8 @@ export default async function (fastify, opts) {
   const task = new AsyncTask(
     'simple task',
     async (taskId, jobId) => {
-      const { num } = fastify.db.prepare(`SELECT Count(*) AS num FROM t`).get()
-      console.log('simple task run', taskId, jobId, num)
+      // const { num } = fastify.db.prepare(`SELECT Count(*) AS num FROM t`).get()
+      // console.log('simple task run', taskId, jobId, num)
     },
     (err) => {}
   )
@@ -69,7 +54,11 @@ export default async function (fastify, opts) {
 
   fastify.ready().then(
     () => {
-      _initDatabase(__dbPath)
+      // create table  init
+      const sqliteCreateTableFile = fs.readFileSync(__dbCreateTablePath, 'utf8')
+      const db = new Database(__dbPath, { verbose: console.log })
+      db.exec(sqliteCreateTableFile)
+
       fastify.scheduler.addSimpleIntervalJob(job)
       console.log('successfully booted!')
     },
