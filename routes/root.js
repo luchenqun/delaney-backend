@@ -40,30 +40,49 @@ export default async function (fastify, opts) {
   })
 
   // 创建用户
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/create-user | jq
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "parent_ref": "888888"}' http://127.0.0.1:3000/create-user | jq
   fastify.post('/create-user', function (request, reply) {
-    const { address } = request.body
+    const { address, parent_ref } = request.body
     const { db } = fastify
-    console.log({ address })
+    console.log({ address, parent_ref })
 
-    if (!address) {
+    if (!parent_ref || !address) {
       return {
         code: ErrorInputCode,
-        msg: ErrorInputMsg + 'address',
+        msg: ErrorInputMsg + 'address or parent_ref',
         data: {}
       }
     }
 
-    const ref = randRef()
-    const stmt = db.prepare('INSERT INTO user (address, ref) VALUES (?, ?)')
-    const info = stmt.run(address, ref)
-    console.log(info)
+    // 检查用户是否存在，只要存在就一定是绑定过了，不允许重复绑定
     const user = db.prepare('SELECT * FROM user WHERE address = ?').get(address)
+    if (user) {
+      return {
+        code: ErrorBusinessCode,
+        msg: ErrorDataNotExistMsg + `user ${address} already exist`,
+        data: {}
+      }
+    }
+
+    // 检查父用户是否存在
+    const parent = db.prepare('SELECT address FROM user WHERE ref = ?').get(parent_ref)
+    if (!parent) {
+      return {
+        code: ErrorDataNotExistCode,
+        msg: ErrorDataNotExistMsg + `no user corresponding to this ref ${parent_ref}`,
+        data: {}
+      }
+    }
+    console.log('parent', parent)
+
+    // 完成绑定关系
+    const ref = randRef() // 数据库里面已经做了ref不允许重复存在的限制。所以有一定概率注册失败，如果注册失败，让前端再重新注册一下
+    db.prepare('INSERT INTO user (address, parent, ref, parent_ref) VALUES (?, ?, ?, ?)').run(address, parent.address, ref, parent_ref)
 
     reply.send({
       code: 0,
       msg: '',
-      data: user
+      data: { ref, parent: parent.address }
     })
   })
 
@@ -82,64 +101,7 @@ export default async function (fastify, opts) {
     }
   })
 
-  // 绑定邀请码
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "parent_ref": "888888"}' http://127.0.0.1:3000/bind-parent-ref | jq
-  fastify.post('/bind-parent-ref', function (request, reply) {
-    const { address, parent_ref } = request.body
-    const { db } = fastify
-    console.log({ address, parent_ref })
-
-    if (!parent_ref || !address) {
-      return {
-        code: ErrorInputCode,
-        msg: ErrorInputMsg + 'address or parent_ref',
-        data: {}
-      }
-    }
-
-    // 检查用户是否存在
-    const user = db.prepare('SELECT * FROM user WHERE address = ?').get(address)
-    if (!user) {
-      return {
-        code: ErrorDataNotExistCode,
-        msg: ErrorDataNotExistMsg + `no user corresponding to this address ${address}`,
-        data: {}
-      }
-    }
-
-    // 不允许重复绑定
-    if (user.parent_ref) {
-      return {
-        code: ErrorBusinessCode,
-        msg: ErrorBusinessMsg + `you have bind a ref ${user.parent_ref}`,
-        data: {}
-      }
-    }
-
-    console.log('user', user)
-
-    // 检查父用户是否存在
-    const parent = db.prepare('SELECT address FROM user WHERE ref = ?').get(parent_ref)
-    if (!parent) {
-      return {
-        code: ErrorDataNotExistCode,
-        msg: ErrorDataNotExistMsg + `no user corresponding to this ref ${parent_ref}`,
-        data: {}
-      }
-    }
-    console.log('parent', parent)
-
-    // 完成绑定关系
-    db.prepare('UPDATE user SET parent = ?, parent_ref = ? WHERE address = ?').run(parent.address, parent_ref, address)
-
-    reply.send({
-      code: 0,
-      msg: '',
-      data: Object.assign(user, { parent_ref, parent: parent.address })
-    })
-  })
-
-  // 用户获取质押的签名
+  // 用户获取质押的签名(由于是实时获取上链的mud的价值， 不再需要签名)
   // https://coinsbench.com/how-to-sign-a-message-with-ethers-js-v6-and-then-validate-it-in-solidity-89cd4f172dfd
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "mud": 888888}' http://127.0.0.1:3000/sign-delegate
   fastify.post('/sign-delegate', async function (request, reply) {

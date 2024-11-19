@@ -1,5 +1,5 @@
 export const randRef = (len = 6) => {
-  const characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  const characters = '0123456789'
   let ref = ''
   for (let i = 0; i < len; i++) {
     const randomIndex = Math.floor(Math.random() * characters.length)
