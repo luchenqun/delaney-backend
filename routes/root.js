@@ -9,6 +9,7 @@ export default async function (fastify, opts) {
   })
 
   // 获取mud的价格
+  // curl http://127.0.0.1:3000/mud-price | jq
   fastify.get('/mud-price', async function (request, reply) {
     let blockTag = 'latest'
 
@@ -40,6 +41,7 @@ export default async function (fastify, opts) {
   })
 
   // 创建用户
+  // TODO: 为了防止用户恶意注册，会检查用户相关条件，比如：是否有POL，是否有MUD代币，是否有USDT，是否nonce大于0
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "parent_ref": "888888"}' http://127.0.0.1:3000/create-user | jq
   fastify.post('/create-user', function (request, reply) {
     const { address, parent_ref } = request.body
@@ -101,7 +103,7 @@ export default async function (fastify, opts) {
     }
   })
 
-  // 用户获取质押的签名(由于是实时获取上链的mud的价值， 不再需要签名)
+  // 用户获取质押的签名(不再需要)
   // https://coinsbench.com/how-to-sign-a-message-with-ethers-js-v6-and-then-validate-it-in-solidity-89cd4f172dfd
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "mud": 888888}' http://127.0.0.1:3000/sign-delegate
   fastify.post('/sign-delegate', async function (request, reply) {
@@ -133,36 +135,24 @@ export default async function (fastify, opts) {
   })
 
   // 用户质押
+  // TODO: 为了防止恶意插入数据，用户质押的数目超过1000条，我们只有拿到回执了我们才会插入数据
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "mud": 888888, "hash": "0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156"}' http://127.0.0.1:3000/delegate
   fastify.post('/delegate', function (request, reply) {
-    const { address, mud, hash } = request.body
+    const { address, mud, hash, min_usdt } = request.body
     const { db } = fastify
     console.log({ address, mud, hash })
 
-    if (!address || !mud || !hash) {
+    if (!address || !mud || !hash || !min_usdt) {
       return {
         code: ErrorInputCode,
-        msg: ErrorInputMsg + 'address or mud or hash',
+        msg: ErrorInputMsg + 'address or mud or hash or usdt',
         data: {}
       }
     }
 
-    const mudPrice = (new Date().getMinutes() + 1) * 100000 // TODO 实时获取
-    const usdt = parseInt(mud) * mudPrice
-
-    // 获取所有的配置信息
-    const configs = db.prepare('SELECT * FROM config').all()
-    const config = {}
-    for (const item of configs) {
-      config[item.key] = item.value
-    }
-
     // 将质押信息插入数据库
-    const period_day = config['period_day']
-    const period_num = config['period_num']
-    const period_reward_ratio = config['period_reward_ratio']
-    const stmt = db.prepare('INSERT INTO delegate (address, mud, hash, usdt) VALUES (?, ?, ?, ?)')
-    const info = stmt.run(address, mud, hash, usdt)
+    const stmt = db.prepare('INSERT INTO delegate (address, mud, min_usdt, hash) VALUES (?, ?, ?, ?)')
+    const info = stmt.run(address, mud, min_usdt, hash)
     console.log(info)
 
     reply.send({

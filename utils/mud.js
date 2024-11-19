@@ -63,5 +63,12 @@ export const mudPrice = async (blockTag) => {
 
   const block = await provider.getBlock(blockTag, false)
 
-  return { ...price, timestamp: block.timestamp, number: block.number, hash: block.hash, time: new Date(block.timestamp * 1000).toISOString() }
+  return {
+    ...price,
+    timestamp: block.timestamp,
+    number: block.number,
+    hash: block.hash,
+    time: new Date(block.timestamp * 1000).toISOString(),
+    sqrtPriceX96: slot0.sqrtPriceX96.toString()
+  }
 }

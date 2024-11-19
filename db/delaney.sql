@@ -32,7 +32,7 @@ CREATE TABLE
     team_usdt INT NOT NULL DEFAULT 0,
     ref VARCHAR(6) UNIQUE NOT NULL DEFAULT "",
     parent_ref VARCHAR(6) NOT NULL DEFAULT "",
-    create_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
 INSERT
@@ -69,14 +69,15 @@ CREATE TABLE
     delegate_id INT NOT NULL DEFAULT -1, -- 如果复投，来自哪个
     address CHAR(42) NOT NULL,
     mud INT NOT NULL DEFAULT 0,
+    min_usdt INT NOT NULL DEFAULT 0,
     usdt INT NOT NULL DEFAULT 0,
     hash CHAR(66) UNIQUE NOT NULL,
     period_day INT NOT NULL DEFAULT 15,
     period_num INT NOT NULL DEFAULT 8,
     period_reward_ratio INT NOT NULL DEFAULT 5,
     status INT NOT NULL DEFAULT 0,
-    end_at TIMESTAMP NOT NULL,
-    create_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    unlock_time TIMESTAMP NOT NULL,
+    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
 -- 动态奖励
@@ -89,8 +90,8 @@ CREATE TABLE
     type INT NOT NULL DEFAULT 0,
     hash CHAR(66) NOT NULL,
     status INT NOT NULL DEFAULT 0,
-    claim_at TIMESTAMP NOT NULL,
-    create_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    claim_time TIMESTAMP NOT NULL,
+    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
 -- 静态奖励
@@ -103,8 +104,8 @@ CREATE TABLE
     type INT NOT NULL DEFAULT 0,
     hash CHAR(66) NOT NULL,
     status INT NOT NULL DEFAULT 0,
-    claim_at TIMESTAMP NOT NULL,
-    create_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    unlock_time TIMESTAMP NOT NULL,
+    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
 -- 配置
@@ -119,8 +120,6 @@ CREATE TABLE
 INSERT
 OR IGNORE INTO config (key, value, description)
 VALUES
-  ('period_day', 1296000, '每期天数(精确到秒)'), -- 15day
-  ('period_num', 8, '一共多少期'),
   ('period_reward_ratio', 5, '每期奖励百分比'),
   ('person_reward_level1', 3, '个人奖励第一层百分比'),
   ('person_reward_level2', 4, '个人奖励第二层百分比'),
@@ -142,5 +141,5 @@ CREATE TABLE
     title VARCHAR(128) NOT NULL,
     content VARCHAR(2048) NOT NULL,
     is_read BOOLEAN NOT NULL DEFAULT false,
-    create_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
