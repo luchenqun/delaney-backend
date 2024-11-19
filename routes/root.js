@@ -79,12 +79,13 @@ export default async function (fastify, opts) {
 
     // 完成绑定关系
     const ref = randRef() // 数据库里面已经做了ref不允许重复存在的限制。所以有一定概率注册失败，如果注册失败，让前端再重新注册一下
-    db.prepare('INSERT INTO user (address, parent, ref, parent_ref) VALUES (?, ?, ?, ?)').run(address, parent.address, ref, parent_ref)
+    const info = db.prepare('INSERT INTO user (address, parent, ref, parent_ref) VALUES (?, ?, ?, ?)').run(address, parent.address, ref, parent_ref)
+    console.log(info)
 
     reply.send({
       code: 0,
       msg: '',
-      data: { ref, parent: parent.address }
+      data: { ref, parent: parent.address, id: info.lastInsertRowid }
     })
   })
 
@@ -119,35 +120,6 @@ export default async function (fastify, opts) {
     }
   })
 
-  // 用户获取领取奖励的签名
-  // https://coinsbench.com/how-to-sign-a-message-with-ethers-js-v6-and-then-validate-it-in-solidity-89cd4f172dfd
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/sign-claim
-  fastify.post('/sign-claim', async function (request, reply) {
-    const { address, usdt, mudMin, claimIds, deadline } = request.body
-
-    if (!address) {
-      return {
-        code: ErrorInputCode,
-        msg: ErrorInputMsg + 'address',
-        data: {}
-      }
-    }
-
-    // claimIds 是用户去领取了哪些奖励id，比如 "{dynamic:[1,5,6], static:[1,8,9]}"
-    // TODO: 检查 claimIds 对应的 usdt 之和 是否等于用户传进来的usdt的数值
-
-    const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
-    const signer = new Wallet(privateKey)
-
-    const signature = await signer.signMessage(address + usdt + mudMin + claimIds + deadline)
-
-    reply.send({
-      code: 0,
-      msg: '',
-      data: { signature }
-    })
-  })
-
   // 用户质押
   // TODO: 为了防止恶意插入数据，用户质押的数目超过1000条，我们只有拿到回执了我们才会插入数据
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "mud": 888888, "hash": "0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156"}' http://127.0.0.1:3000/delegate
@@ -156,10 +128,38 @@ export default async function (fastify, opts) {
     const { db } = fastify
     console.log({ address, mud, hash })
 
-    if (!address || !mud || !hash || !min_usdt) {
+    if (!address || !mud || !hash || min_usdt == undefined) {
       return {
         code: ErrorInputCode,
-        msg: ErrorInputMsg + 'address or mud or hash or usdt',
+        msg: ErrorInputMsg + 'address or mud or hash or min_usdt',
+        data: {}
+      }
+    }
+
+    // 将质押信息插入数据库
+    const stmt = db.prepare('INSERT INTO delegate (address, mud, min_usdt, hash) VALUES (?, ?, ?, ?)')
+    const info = stmt.run(address, mud, min_usdt, hash)
+    console.log(info)
+
+    reply.send({
+      code: 0,
+      msg: '',
+      data: Object.assign({}, { id: info.lastInsertRowid })
+    })
+  })
+
+  // 用户质押
+  // TODO: 为了防止恶意插入数据，用户质押的数目超过1000条，我们只有拿到回执了我们才会插入数据
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "mud": 888888, "hash": "0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156"}' http://127.0.0.1:3000/delegate
+  fastify.post('/confirm-delegate', function (request, reply) {
+    const { hash } = request.body
+    const { db } = fastify
+    console.log({ hash })
+
+    if (!hash) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'hash',
         data: {}
       }
     }
@@ -189,5 +189,34 @@ export default async function (fastify, opts) {
         items: delegates
       }
     }
+  })
+
+  // 用户获取领取奖励的签名
+  // https://coinsbench.com/how-to-sign-a-message-with-ethers-js-v6-and-then-validate-it-in-solidity-89cd4f172dfd
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/sign-claim
+  fastify.post('/sign-claim', async function (request, reply) {
+    const { address, usdt, mudMin, claimIds, deadline } = request.body
+
+    if (!address) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'address',
+        data: {}
+      }
+    }
+
+    // claimIds 是用户去领取了哪些奖励id，比如 "{dynamic:[1,5,6], static:[1,8,9]}"
+    // TODO: 检查 claimIds 对应的 usdt 之和 是否等于用户传进来的usdt的数值
+
+    const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
+    const signer = new Wallet(privateKey)
+
+    const signature = await signer.signMessage(address + usdt + mudMin + claimIds + deadline)
+
+    reply.send({
+      code: 0,
+      msg: '',
+      data: { signature }
+    })
   })
 }
