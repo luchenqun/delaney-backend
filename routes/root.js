@@ -103,34 +103,48 @@ export default async function (fastify, opts) {
     }
   })
 
-  // 用户获取质押的签名(不再需要)
-  // https://coinsbench.com/how-to-sign-a-message-with-ethers-js-v6-and-then-validate-it-in-solidity-89cd4f172dfd
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "mud": 888888}' http://127.0.0.1:3000/sign-delegate
-  fastify.post('/sign-delegate', async function (request, reply) {
-    const { address, mud } = request.body
-    console.log({ address, mud })
+  // 获取用户的奖励信息
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/claim
+  fastify.get('/claim', async function (request, reply) {
+    const { db } = fastify
+    return {
+      code: 0,
+      msg: '',
+      data: {
+        address: '0x0000000bA7906929D5629151777BC2321346828D',
+        usdt: 100000000000,
+        mudMin: 1000000000,
+        claimIds: { dynamic: [1, 2, 6], static: [2, 8] }
+      }
+    }
+  })
 
-    if (!address || !mud) {
+  // 用户获取领取奖励的签名
+  // https://coinsbench.com/how-to-sign-a-message-with-ethers-js-v6-and-then-validate-it-in-solidity-89cd4f172dfd
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/sign-claim
+  fastify.post('/sign-claim', async function (request, reply) {
+    const { address, usdt, mudMin, claimIds, deadline } = request.body
+
+    if (!address) {
       return {
         code: ErrorInputCode,
-        msg: ErrorInputMsg + 'address or mud',
+        msg: ErrorInputMsg + 'address',
         data: {}
       }
     }
 
-    const mudPrice = (new Date().getMinutes() + 1) * 100000 // TODO 实时获取
-    const usdt = parseInt(mud) * mudPrice
+    // claimIds 是用户去领取了哪些奖励id，比如 "{dynamic:[1,5,6], static:[1,8,9]}"
+    // TODO: 检查 claimIds 对应的 usdt 之和 是否等于用户传进来的usdt的数值
 
     const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
     const signer = new Wallet(privateKey)
-    const create_at = new Date().getTime() / 1000 // 秒级就够了
 
-    const signature = await signer.signMessage(address + mud + usdt + create_at)
+    const signature = await signer.signMessage(address + usdt + mudMin + claimIds + deadline)
 
     reply.send({
       code: 0,
       msg: '',
-      data: { address, mud, usdt, create_at, signature }
+      data: { signature }
     })
   })
 
