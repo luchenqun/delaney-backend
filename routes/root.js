@@ -112,7 +112,7 @@ export default async function (fastify, opts) {
       code: 0,
       msg: '',
       data: {
-        address: '0x0000000bA7906929D5629151777BC2321346828D',
+        address: '0x00000Be6819f41400225702D32d3dd23663Dd690',
         usdt: 100000000000,
         mudMin: 1000000000,
         claimIds: { dynamic: [1, 2, 6], static: [2, 8] }
