@@ -75,7 +75,7 @@ CREATE TABLE
     min_usdt INT NOT NULL DEFAULT 0,
     usdt INT NOT NULL DEFAULT 0,
     hash CHAR(66) UNIQUE NOT NULL,
-    period_day INT NOT NULL DEFAULT 0,
+    period_duration INT NOT NULL DEFAULT 0,
     period_num INT NOT NULL DEFAULT 0,
     period_reward_ratio INT NOT NULL DEFAULT 0,
     status INT NOT NULL DEFAULT 0,

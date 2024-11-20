@@ -271,10 +271,10 @@ export default async function (fastify, opts) {
     }
 
     const from = receipt.from.toLowerCase()
-    const id = logArgs[1]
+    const cid = logArgs[1]
     // TODO 根据id去合约查询delegate的状态，要确认没有取消质押
-    console.log({ id })
-    let { mud, usdt, periodDuration, periodNum, unlockTime, withdrew } = (await delaney.delegations(id)).toObject(true)
+    console.log({ id: cid })
+    let { mud, usdt, periodDuration, periodNum, unlockTime, withdrew } = (await delaney.delegations(cid)).toObject(true)
     mud = parseInt(mud)
     usdt = parseInt(usdt)
     periodDuration = parseInt(periodDuration)
@@ -313,7 +313,15 @@ export default async function (fastify, opts) {
 
     const transaction = db.transaction(() => {
       // 质押信息更新
-      db.prepare('UPDATE delegate SET status = ?, unlock_time = ? WHERE hash = ?').run(DelegateStatusSuccess, unlockTime, hash)
+      db.prepare('UPDATE delegate SET cid = ?, period_duration = ?, period_num = ?, period_reward_ratio = ?, status = ?, unlock_time = ? WHERE hash = ?').run(
+        cid,
+        periodDuration,
+        periodNum,
+        config['period_reward_ratio'],
+        DelegateStatusSuccess,
+        unlockTime,
+        hash
+      )
       // 自己信息更新：自己质押的mud/usdt更新，状态更新
       db.prepare('UPDATE user SET mud = ?, usdt = ? WHERE address = ?').run(self.mud + mud, self.usdt + usdt, self.address)
 
