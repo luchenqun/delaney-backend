@@ -375,8 +375,48 @@ export default async function (fastify, opts) {
         const rewardUsdt = parseInt((config['period_reward_ratio'] * usdt) / 100)
         db.prepare('INSERT INTO static_reward (delegate_id, period, address, usdt, unlock_time) VALUES (?, ?, ?, ?, ?)').run(delegate.id, period, from, rewardUsdt, unlock_time)
       }
-      console.log('end....')
+
       // 上级用户信息更新：团队星级，直推以及团队的mud/usdt的更新
+      for (let i = 0; i < parents.length; i++) {
+        const user = parents[i]
+        // 第一个节点累计直推金额
+        if (i == 0) {
+          user.sub_mud += mud
+          user.sub_usdt += usdt
+        }
+
+        // 所有父节点都需要加团队金额
+        user.team_mud += mud
+        user.team_usdt += usdt
+
+        // 升级团队星级
+        if (user.star == 0) {
+          // 从0星升到1星
+          if (user.sub_usdt >= config['team_level1_sub_usdt'] && user.team_usdt >= config['team_level1_team_usdt']) {
+            user.star = 1
+            user.upgradeStar = true
+          }
+        } else if (user.star < RewardMaxStar && i >= 1) {
+          // 只有1 ~ 4星才有机会升级，5星已经是满级了
+          const child = parents[i - 1]
+          // 只有子账号升级了，父账号才有可能升级
+          if (child.upgradeStar) {
+            // 查一下该用户下面的子账号已经有多少个了，如果只有1个，加上之前因为子账号升级了，那么久有可能需要升级了
+            const count = db.prepare('SELECT COUNT(*) FROM user WHERE star > ? AND parent == ?').get(user.star - 1, user.address)
+            // 不能跨越升级，比如现在的账号是4星了，上面升级的是1星，那么依然维持1星
+            if (child.star == user.star - 1 && count == 1) {
+              user.star = user.star + 1
+              user.upgradeStar = true
+            }
+          }
+        }
+      }
+
+      // 更新团队等级
+      for (const user of parents) {
+        const { sub_mud, sub_usdt, team_mud, team_usdt, star, address } = user
+        db.prepare('UPDATE user SET sub_mud = ?, sub_usdt = ?, team_mud = ?, team_usdt = ?, star = ? WHERE address = ?').run(sub_mud, sub_usdt, team_mud, team_usdt, star, address)
+      }
     })
 
     transaction()

@@ -144,7 +144,9 @@ VALUES
     'team_reward_min_usdt',
     1000000000,
     '拿团队奖励自己需要质押的最小金额'
-  );
+  ),
+  ('team_level1_sub_usdt', 500000000, '一星条件最小直推金额'),
+  ('team_level1_team_usdt', 2000000000, '一星条件最小团队金额');
 
 -- 消息
 CREATE TABLE
