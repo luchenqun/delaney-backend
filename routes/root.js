@@ -1,6 +1,6 @@
 import { mudPrice } from '../utils/index.js'
 import { ErrorInputCode, ErrorInputMsg, ErrorDataNotExistCode, ErrorDataNotExistMsg, ErrorBusinessCode, ErrorBusinessMsg } from '../utils/index.js'
-import { randRef } from '../utils/index.js'
+import { randRef, provider } from '../utils/index.js'
 import { ZeroAddress, ZeroHash, Wallet } from 'ethers'
 
 export default async function (fastify, opts) {
@@ -195,9 +195,8 @@ export default async function (fastify, opts) {
     })
   })
 
-  // 用户质押
-  // TODO: 为了防止恶意插入数据，用户质押的数目超过1000条，我们只有拿到回执了我们才会插入数据
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "mud": 888888, "hash": "0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156"}' http://127.0.0.1:3000/delegate
+  // 用户确认质押成功
+  // curl -X POST -H "Content-Type: application/json" -d '{"hash": "0x568d98d3354ad83d3d4ffcb372a5c9745002a167d3c93f753dbe4c38f2c4ecda"}' http://127.0.0.1:3000/confirm-delegate
   fastify.post('/confirm-delegate', function (request, reply) {
     const { hash } = request.body
     const { db } = fastify
@@ -219,7 +218,7 @@ export default async function (fastify, opts) {
     reply.send({
       code: 0,
       msg: '',
-      data: Object.assign(user, { parent_ref, parent: parent.address })
+      data: {}
     })
   })
 
