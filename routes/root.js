@@ -354,7 +354,7 @@ export default async function (fastify, opts) {
           break
         }
       }
-
+      console.log('.........>>>>>')
       // 分发静态奖励即质押生息
       for (let i = 0; i < periodNum; i++) {
         const period = i + 1
