@@ -203,7 +203,7 @@ export default async function (fastify, opts) {
   })
 
   // 用户确认质押成功
-  // curl -X POST -H "Content-Type: application/json" -d '{"hash": "0xf1043277e239a9bbc23c72fc104cf1a93c8236f1baa13b6150bbfe4b1ca6a384"}' http://127.0.0.1:3000/confirm-delegate
+  // curl -X POST -H "Content-Type: application/json" -d '{"hash": "0x3be4045e7a4ce7bd74bed53537ab702372944d5f1a1753bda1c669cc52e77c47"}' http://127.0.0.1:3000/confirm-delegate
   fastify.post('/confirm-delegate', async function (request, reply) {
     const { hash } = request.body
     const { db } = fastify
@@ -246,8 +246,8 @@ export default async function (fastify, opts) {
       }
     }
 
-    const tx = await provider.getTransaction(hash)
-    const txDescription = delaney.interface.parseTransaction(tx)
+    // const tx = await provider.getTransaction(hash)
+    // const txDescription = delaney.interface.parseTransaction(tx)
 
     // 能不能找到Delegate事件
     const logs = receipt.logs || []
@@ -289,6 +289,17 @@ export default async function (fastify, opts) {
       }
     }
 
+    const delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
+
+    // 考虑重复确认的问题
+    if (delegate.status != 0) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'you have confirmed',
+        data: {}
+      }
+    }
+
     // 根据delegator依次把所有受影响的账户找出来
     let parents = []
     let self
@@ -308,8 +319,6 @@ export default async function (fastify, opts) {
     for (const cfg of configs) {
       config[cfg.key] = cfg.value
     }
-
-    const delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
 
     const transaction = db.transaction(() => {
       // 质押信息更新
@@ -343,7 +352,7 @@ export default async function (fastify, opts) {
       // 分发动态奖励中的团队奖励
       let preStar = 0 // 上个星级
       let preRaito = 0 // 上个星级的奖励
-      for (let i = 0; i < RewardMaxDepth; i++) {
+      for (let i = 0; i < parents.length; i++) {
         const user = parents[i]
         // 个人投资额度需要大于某个数才能获取团队奖励
         // TODO 测试阶段直接分发
@@ -402,7 +411,7 @@ export default async function (fastify, opts) {
           // 只有子账号升级了，父账号才有可能升级
           if (child.upgradeStar) {
             // 查一下该用户下面的子账号已经有多少个了，如果只有1个，加上之前因为子账号升级了，那么久有可能需要升级了
-            const count = db.prepare('SELECT COUNT(*) FROM user WHERE star > ? AND parent == ?').get(user.star - 1, user.address)
+            const count = db.prepare('SELECT COUNT(*) FROM user WHERE star = ? AND parent = ?').get(user.star - 1, user.address)
             // 不能跨越升级，比如现在的账号是4星了，上面升级的是1星，那么依然维持1星
             if (child.star == user.star - 1 && count == 1) {
               user.star = user.star + 1
