@@ -10,7 +10,7 @@
   "scripts": {
     "test": "node --test test/**/*.test.js",
     "start": "fastify start -l info app.js",
-    "dev": "fastify start -w -l info -P app.js --ignore-watch='db test/bussiness.js'",
+    "dev": "fastify start -w -l warn -P app.js --ignore-watch='db test/bussiness.js'",
     "pretest": "standard",
     "lint": "standard --fix"
   },

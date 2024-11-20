@@ -26,6 +26,8 @@ CREATE TABLE
     parent CHAR(42) DEFAULT "",
     star INT NOT NULL DEFAULT 0,
     min_star INT NOT NULL DEFAULT 0,
+    mud INT NOT NULL DEFAULT 0,
+    usdt INT NOT NULL DEFAULT 0,
     sub_mud INT NOT NULL DEFAULT 0,
     sub_usdt INT NOT NULL DEFAULT 0,
     team_mud INT NOT NULL DEFAULT 0,
@@ -91,7 +93,7 @@ CREATE TABLE
     type INT NOT NULL DEFAULT 0,
     hash CHAR(66) NOT NULL,
     status INT NOT NULL DEFAULT 0,
-    claim_time TIMESTAMP NOT NULL,
+    claim_time TIMESTAMP,
     create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -106,6 +108,7 @@ CREATE TABLE
     hash CHAR(66) NOT NULL,
     status INT NOT NULL DEFAULT 0,
     unlock_time TIMESTAMP NOT NULL,
+    claim_time TIMESTAMP,
     create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -131,7 +134,17 @@ VALUES
   ('team_reward_level2', 12, '团队奖励第二层百分比'),
   ('team_reward_level3', 9, '团队奖励第三层百分比'),
   ('team_reward_level4', 6, '团队奖励第四层百分比'),
-  ('team_reward_level5', 3, '团队奖励第五层百分比');
+  ('team_reward_level5', 3, '团队奖励第五层百分比'),
+  (
+    'preson_reward_min_usdt',
+    100000000,
+    '拿个人奖励自己需要质押的最小金额'
+  ),
+  (
+    'team_reward_min_usdt',
+    1000000000,
+    '拿团队奖励自己需要质押的最小金额'
+  );
 
 -- 消息
 CREATE TABLE
