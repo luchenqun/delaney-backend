@@ -274,7 +274,13 @@ export default async function (fastify, opts) {
     const id = logArgs[1]
     // TODO 根据id去合约查询delegate的状态，要确认没有取消质押
     console.log({ id })
-    const { mud, usdt, periodDuration, periodNum, unlockTime, withdrew } = (await delaney.delegations(id)).toObject(true)
+    let { mud, usdt, periodDuration, periodNum, unlockTime, withdrew } = (await delaney.delegations(id)).toObject(true)
+    mud = parseInt(mud)
+    usdt = parseInt(usdt)
+    periodDuration = parseInt(periodDuration)
+    periodNum = parseInt(periodNum)
+    unlockTime = parseInt(unlockTime)
+
     if (withdrew) {
       return {
         code: ErrorBusinessCode,
@@ -308,7 +314,6 @@ export default async function (fastify, opts) {
     const transaction = db.transaction(() => {
       // 质押信息更新
       db.prepare('UPDATE delegate SET status = ?, unlock_time = ? WHERE hash = ?').run(DelegateStatusSuccess, unlockTime, hash)
-
       // 自己信息更新：自己质押的mud/usdt更新，状态更新
       db.prepare('UPDATE user SET mud = ?, usdt = ? WHERE address = ?').run(self.mud + mud, self.usdt + usdt, self.address)
 
@@ -319,14 +324,14 @@ export default async function (fastify, opts) {
         // TODO 测试阶段直接分发
         if (user.usdt >= config['preson_reward_min_usdt'] || true) {
           const rewardUsdt = parseInt((config[RewardPersonKey + (i + 1)] * usdt) / 100)
-          db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?, ?)').run(delegate.id, user.address, rewardUsdt, RewardTypePerson)
+          db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, rewardUsdt, RewardTypePerson)
         }
         // 没5层那就直接退出
         if (user.parent === ZeroAddress) {
           break
         }
       }
-
+      console.log('111.........>>>>>')
       // 分发动态奖励中的团队奖励
       let preStar = 0 // 上个星级
       let preRaito = 0 // 上个星级的奖励
@@ -354,7 +359,7 @@ export default async function (fastify, opts) {
           break
         }
       }
-      console.log('.........>>>>>')
+      console.log('2222.........>>>>>')
       // 分发静态奖励即质押生息
       for (let i = 0; i < periodNum; i++) {
         const period = i + 1
