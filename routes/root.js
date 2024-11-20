@@ -331,7 +331,7 @@ export default async function (fastify, opts) {
           break
         }
       }
-      console.log('111.........>>>>>')
+
       // 分发动态奖励中的团队奖励
       let preStar = 0 // 上个星级
       let preRaito = 0 // 上个星级的奖励
@@ -344,7 +344,7 @@ export default async function (fastify, opts) {
           const curRatio = config[RewardTeamKey + star] // 每个星级奖励多少
           const teamRatio = curRatio - preRaito // 需要扣除给手下的，实际奖励多少
           const rewardUsdt = parseInt((teamRatio * usdt) / 100)
-          db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?, ?)').run(delegate.id, user.address, rewardUsdt, RewardTypeTeam)
+          db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, rewardUsdt, RewardTypeTeam)
           preStar = star
           preRaito = curRatio
         }
@@ -359,7 +359,7 @@ export default async function (fastify, opts) {
           break
         }
       }
-      console.log('2222.........>>>>>')
+
       // 分发静态奖励即质押生息
       for (let i = 0; i < periodNum; i++) {
         const period = i + 1
