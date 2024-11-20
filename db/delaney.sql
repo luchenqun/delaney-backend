@@ -50,7 +50,7 @@ OR IGNORE INTO user (
 )
 VALUES
   (
-    '0x00000Be6819f41400225702D32d3dd23663Dd690',
+    '0x00000be6819f41400225702d32d3dd23663dd690',
     '0x0000000000000000000000000000000000000000',
     0,
     0,
@@ -66,17 +66,18 @@ VALUES
 CREATE TABLE
   IF NOT EXISTS delegate (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-    delegate_id INT NOT NULL DEFAULT -1, -- 如果复投，来自哪个
+    parent_id INT NOT NULL DEFAULT -1, -- 如果复投，来自哪个父的委托id
+    cid INT NOT NULL DEFAULT -1, -- 合约上面的id，要根据id到期领取本金
     address CHAR(42) NOT NULL,
     mud INT NOT NULL DEFAULT 0,
     min_usdt INT NOT NULL DEFAULT 0,
     usdt INT NOT NULL DEFAULT 0,
     hash CHAR(66) UNIQUE NOT NULL,
-    period_day INT NOT NULL DEFAULT 15,
-    period_num INT NOT NULL DEFAULT 8,
-    period_reward_ratio INT NOT NULL DEFAULT 5,
+    period_day INT NOT NULL DEFAULT 0,
+    period_num INT NOT NULL DEFAULT 0,
+    period_reward_ratio INT NOT NULL DEFAULT 0,
     status INT NOT NULL DEFAULT 0,
-    unlock_time TIMESTAMP NOT NULL,
+    unlock_time TIMESTAMP,
     create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 

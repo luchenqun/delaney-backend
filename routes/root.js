@@ -1,5 +1,5 @@
-import { mudPrice } from '../utils/mud.js'
-import { ErrorInputCode, ErrorInputMsg, ErrorDataNotExistCode, ErrorDataNotExistMsg, ErrorBusinessCode, ErrorBusinessMsg } from '../utils/error.js'
+import { mudPrice } from '../utils/index.js'
+import { ErrorInputCode, ErrorInputMsg, ErrorDataNotExistCode, ErrorDataNotExistMsg, ErrorBusinessCode, ErrorBusinessMsg } from '../utils/index.js'
 import { randRef } from '../utils/index.js'
 import { ZeroAddress, ZeroHash, Wallet } from 'ethers'
 
@@ -44,7 +44,8 @@ export default async function (fastify, opts) {
   // TODO: 为了防止用户恶意注册，会检查用户相关条件，比如：是否有POL，是否有MUD代币，是否有USDT，是否nonce大于0
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "parent_ref": "888888"}' http://127.0.0.1:3000/create-user | jq
   fastify.post('/create-user', function (request, reply) {
-    const { address, parent_ref } = request.body
+    let { address, parent_ref } = request.body
+    address = address.toLowerCase()
     const { db } = fastify
     console.log({ address, parent_ref })
 
@@ -61,7 +62,7 @@ export default async function (fastify, opts) {
     if (user) {
       return {
         code: ErrorBusinessCode,
-        msg: ErrorDataNotExistMsg + `user ${address} already exist`,
+        msg: ErrorBusinessMsg + `user ${address} already exist`,
         data: {}
       }
     }
@@ -89,6 +90,66 @@ export default async function (fastify, opts) {
     })
   })
 
+  // 更新用户星级
+  // TODO: 只允许管理员可设置
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "star": "5"}' http://127.0.0.1:3000/set-user-star | jq
+  fastify.post('/set-user-star', function (request, reply) {
+    let { address, star } = request.body
+    address = address.toLowerCase()
+    const { db } = fastify
+    console.log({ address, star })
+
+    if (star == undefined || !address) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'address or star',
+        data: {}
+      }
+    }
+
+    // 检查用户是否存在
+    const user = db.prepare('SELECT address FROM user WHERE address = ?').get(address)
+    if (!user) {
+      return {
+        code: ErrorDataNotExistCode,
+        msg: ErrorDataNotExistMsg + `no user corresponding to this ref ${parent_ref}`,
+        data: {}
+      }
+    }
+    console.log('user', user)
+
+    // 完成修改星级
+    const info = db.prepare('UPDATE user SET min_star = ?, star = ? WHERE address = ?').run(star, star, address) // TODO: 本身的星级是不需要改的，测试为了方便都改了
+    console.log(info)
+
+    reply.send({
+      code: 0,
+      msg: '',
+      data: Object.assign(user, { star, min_star: star })
+    })
+  })
+
+  // 根据地址获取用户
+  // curl http://127.0.0.1:3000/user?address=0x1111102dd32160b064f2a512cdef74bfdb6a9f96 | jq
+  fastify.get('/user', async function (request, reply) {
+    let { address } = request.query
+    address = address.toLowerCase()
+    const { db } = fastify
+    const user = db.prepare('SELECT * FROM user WHERE address = ?').get(address)
+    if (!user) {
+      return {
+        code: ErrorBusinessCode,
+        msg: ErrorBusinessMsg + `user ${address} not exist`,
+        data: {}
+      }
+    }
+    reply.send({
+      code: 0,
+      msg: '',
+      data: user
+    })
+  })
+
   // 获取用户列表
   // curl http://127.0.0.1:3000/users | jq
   fastify.get('/users', async function (request, reply) {
@@ -104,27 +165,13 @@ export default async function (fastify, opts) {
     }
   })
 
-  // 获取用户的奖励信息
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/claim
-  fastify.get('/claim', async function (request, reply) {
-    const { db } = fastify
-    return {
-      code: 0,
-      msg: '',
-      data: {
-        address: '0x00000Be6819f41400225702D32d3dd23663Dd690',
-        usdt: 100000000000,
-        mudMin: 1000000000,
-        claimIds: { dynamic: [1, 2, 6], static: [2, 8] }
-      }
-    }
-  })
-
   // 用户质押
   // TODO: 为了防止恶意插入数据，用户质押的数目超过1000条，我们只有拿到回执了我们才会插入数据
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "mud": 888888, "hash": "0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156"}' http://127.0.0.1:3000/delegate
   fastify.post('/delegate', function (request, reply) {
-    const { address, mud, hash, min_usdt } = request.body
+    let { address, mud, hash, min_usdt } = request.body
+    address = address.toLowerCase()
+
     const { db } = fastify
     console.log({ address, mud, hash })
 
@@ -191,11 +238,28 @@ export default async function (fastify, opts) {
     }
   })
 
+  // 获取用户的奖励信息
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/claim
+  fastify.get('/claim', async function (request, reply) {
+    const { db } = fastify
+    return {
+      code: 0,
+      msg: '',
+      data: {
+        address: '0x00000Be6819f41400225702D32d3dd23663Dd690',
+        usdt: 100000000000,
+        mudMin: 1000000000,
+        claimIds: { dynamic: [1, 2, 6], static: [2, 8] }
+      }
+    }
+  })
+
   // 用户获取领取奖励的签名
   // https://coinsbench.com/how-to-sign-a-message-with-ethers-js-v6-and-then-validate-it-in-solidity-89cd4f172dfd
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/sign-claim
   fastify.post('/sign-claim', async function (request, reply) {
-    const { address, usdt, mudMin, claimIds, deadline } = request.body
+    let { address, usdt, mudMin, claimIds, deadline } = request.body
+    address = address.toLowerCase()
 
     if (!address) {
       return {
