@@ -47,6 +47,9 @@ const main = async () => {
 
   let data
 
+  // data = decodeReply(await client.get(`/users`, { params: { page: 1, page_size: 10, sort_field: 'star', sort_order: 'DESC', filters: { star: '>=3', id: '>=1' } } }))
+  // console.log(data)
+
   const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
   const owner = new ethers.Wallet(privateKey, provider)
 

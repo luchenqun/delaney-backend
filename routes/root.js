@@ -1,4 +1,4 @@
-import { mudPrice } from '../utils/index.js'
+import { mudPrice, pageSql } from '../utils/index.js'
 import { ErrorInputCode, ErrorInputMsg, ErrorDataNotExistCode, ErrorDataNotExistMsg, ErrorBusinessCode, ErrorBusinessMsg } from '../utils/constant.js'
 import { DelegateStatusDelegating, DelegateStatusSuccess, DelegateStatusFail, DelegateStatusUndelegating, DelegateStatusWithdrew } from '../utils/constant.js'
 import { RewardMaxDepth, RewardPersonKey, RewardTeamKey, RewardTypePerson, RewardTypeTeam, RewardMaxStar } from '../utils/constant.js'
@@ -42,6 +42,8 @@ export default async function (fastify, opts) {
       code: 0,
       msg: '',
       data: {
+        total: configs.length,
+        pages: 1,
         items: configs
       }
     }
@@ -159,15 +161,25 @@ export default async function (fastify, opts) {
 
   // 获取用户列表
   // curl http://127.0.0.1:3000/users | jq
+  // SELECT * FROM user WHERE star = 1 AND team_usdt >= 100 ORDER BY usdt DESC LIMIT 10 OFFSET 0;
   fastify.get('/users', async function (request, reply) {
     const { db } = fastify
-    const users = db.prepare('SELECT * FROM user').all()
+    let { page, page_size, sort_field, sort_order, filters } = request.query
+    page = parseInt(page || 1)
+    page_size = parseInt(page_size || 10)
+
+    const { sql_base, sql_count } = pageSql('user', page, page_size, sort_field, sort_order, filters)
+    const items = db.prepare(sql_base).all()
+    const { total } = db.prepare(sql_count).get()
+    const pages = Math.ceil(total / page_size)
 
     return {
       code: 0,
       msg: '',
       data: {
-        items: users
+        total,
+        pages,
+        items
       }
     }
   })
@@ -199,6 +211,37 @@ export default async function (fastify, opts) {
       code: 0,
       msg: '',
       data: Object.assign({}, { id: info.lastInsertRowid })
+    })
+  })
+
+  // 用户质押信息
+  // TODO: 为了防止恶意插入数据，用户质押的数目超过1000条，我们只有拿到回执了我们才会插入数据
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "mud": 888888, "hash": "0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156"}' http://127.0.0.1:3000/delegate
+  fastify.get('/delegate', function (request, reply) {
+    let { hash } = request.body
+    const { db } = fastify
+    console.log({ hash })
+
+    if (!hash) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'hash',
+        data: {}
+      }
+    }
+
+    const delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
+    if (!delegate) {
+      return {
+        code: ErrorBusinessCode,
+        msg: ErrorBusinessMsg + `delegate ${hash} not exist`,
+        data: {}
+      }
+    }
+    reply.send({
+      code: 0,
+      msg: '',
+      data: delegate
     })
   })
 
@@ -655,17 +698,74 @@ export default async function (fastify, opts) {
     })
   })
 
-  // 获取用户列表
+  // 获取委托列表
   // curl http://127.0.0.1:3000/delegates | jq
   fastify.get('/delegates', async function (request, reply) {
     const { db } = fastify
-    const delegates = db.prepare('SELECT * FROM delegate').all()
+    let { page, page_size, sort_field, sort_order, filters } = request.query
+    page = parseInt(page || 1)
+    page_size = parseInt(page_size || 10)
+
+    const { sql_base, sql_count } = pageSql('delegate', page, page_size, sort_field, sort_order, filters)
+    const items = db.prepare(sql_base).all()
+    const { total } = db.prepare(sql_count).get()
+    const pages = Math.ceil(total / page_size)
 
     return {
       code: 0,
       msg: '',
       data: {
-        items: delegates
+        total,
+        pages,
+        items
+      }
+    }
+  })
+
+  // 获取动态奖励列表
+  // curl http://127.0.0.1:3000/dynamic-rewards | jq
+  fastify.get('/dynamic-rewards', async function (request, reply) {
+    const { db } = fastify
+    let { page, page_size, sort_field, sort_order, filters } = request.query
+    page = parseInt(page || 1)
+    page_size = parseInt(page_size || 10)
+
+    const { sql_base, sql_count } = pageSql('dynamic_reward', page, page_size, sort_field, sort_order, filters)
+    const items = db.prepare(sql_base).all()
+    const { total } = db.prepare(sql_count).get()
+    const pages = Math.ceil(total / page_size)
+
+    return {
+      code: 0,
+      msg: '',
+      data: {
+        total,
+        pages,
+        items
+      }
+    }
+  })
+
+  // 动态静态列表
+  // curl http://127.0.0.1:3000/static-rewards | jq
+  fastify.get('/static-rewards', async function (request, reply) {
+    const { db } = fastify
+    let { page, page_size, sort_field, sort_order, filters } = request.query
+    page = parseInt(page || 1)
+    page_size = parseInt(page_size || 10)
+
+    const { sql_base, sql_count } = pageSql('static_reward', page, page_size, sort_field, sort_order, filters)
+    const items = db.prepare(sql_base).all()
+    const { total } = db.prepare(sql_count).get()
+    const pages = Math.ceil(total / page_size)
+
+    return {
+      code: 0,
+      msg: '',
+      data: {
+        total,
+        pages,
+        items
       }
     }
   })
@@ -714,6 +814,54 @@ export default async function (fastify, opts) {
       msg: '',
       data: { signature }
     })
+  })
+
+  // 领取的奖励列表
+  // curl http://127.0.0.1:3000/claims | jq
+  fastify.get('/claims', async function (request, reply) {
+    const { db } = fastify
+    let { page, page_size, sort_field, sort_order, filters } = request.query
+    page = parseInt(page || 1)
+    page_size = parseInt(page_size || 10)
+
+    const { sql_base, sql_count } = pageSql('claim', page, page_size, sort_field, sort_order, filters)
+    const items = db.prepare(sql_base).all()
+    const { total } = db.prepare(sql_count).get()
+    const pages = Math.ceil(total / page_size)
+
+    return {
+      code: 0,
+      msg: '',
+      data: {
+        total,
+        pages,
+        items
+      }
+    }
+  })
+
+  // 消息列表
+  // curl http://127.0.0.1:3000/messages | jq
+  fastify.get('/messages', async function (request, reply) {
+    const { db } = fastify
+    let { page, page_size, sort_field, sort_order, filters } = request.query
+    page = parseInt(page || 1)
+    page_size = parseInt(page_size || 10)
+
+    const { sql_base, sql_count } = pageSql('message', page, page_size, sort_field, sort_order, filters)
+    const items = db.prepare(sql_base).all()
+    const { total } = db.prepare(sql_count).get()
+    const pages = Math.ceil(total / page_size)
+
+    return {
+      code: 0,
+      msg: '',
+      data: {
+        total,
+        pages,
+        items
+      }
+    }
   })
 
   // 在这里测试数据库的一些特性

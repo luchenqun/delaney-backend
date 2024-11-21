@@ -89,3 +89,25 @@ export const mudPrice = async (blockTag) => {
     sqrtPriceX96: slot0.sqrtPriceX96.toString()
   }
 }
+
+export const pageSql = (table, page, page_size, sort_field, sort_order, filters) => {
+  let sql_base = `SELECT * FROM ${table}`
+  if (filters) {
+    let conditions = []
+    Object.keys(filters).forEach((key) => {
+      conditions.push(`${key} ${filters[key]}`)
+    })
+
+    if (conditions.length > 0) {
+      sql_base += ` WHERE ${conditions.join(' AND ')}`
+    }
+  }
+
+  const sql_count = sql_base.replace('*', 'COUNT(*) total')
+
+  if (sort_field && sort_order) {
+    sql_base += ` ORDER BY ${sort_field} ${sort_order}`
+  }
+  sql_base += ` LIMIT ${page_size} OFFSET ${(page - 1) * page_size}`
+  return { sql_count, sql_base }
+}
