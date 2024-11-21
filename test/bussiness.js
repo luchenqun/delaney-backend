@@ -75,6 +75,14 @@ const main = async () => {
       : await deploy(owner, delaneyAbi, delaneyBytecode, [owner.address, owner.address, pool.target, mud.target])
   console.log('contract delaney address = ', delaney.target)
 
+  {
+    const periodDuration = await delaney.periodDuration()
+    if (periodDuration > 60) {
+      const tx = await delaney.setPeriodDuration(8) // 方便测试每个周期设为8秒
+      await tx.wait()
+    }
+  }
+
   // 用户注册，我们要注册一个5层的用户列表，方便后面测试
   let parent_ref = '888888'
   let needSetStar = true
