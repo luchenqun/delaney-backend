@@ -18,18 +18,22 @@ export default async function (fastify, opts) {
   // 获取mud的价格
   // curl http://127.0.0.1:3000/mud-price | jq
   fastify.get('/mud-price', async function (request, reply) {
-    let blockTag = 'latest'
+    let block_tag = 'latest'
 
-    if (/^\d+$/.test(request.query.blockTag)) {
-      blockTag = parseInt(request.query.blockTag)
+    if (/^\d+$/.test(request.query.block_tag)) {
+      block_tag = parseInt(request.query.block_tag)
     }
     // [46000000, 50702048, 54702048, 64188580, 64188680, 'latest']
     // 0x2b4a7f89a40e25b83ceeb858e44524452d4fa056a44c0a36e64263e16a1e5197
-    console.log('blockTag --->', request.query.blockTag, blockTag)
-    const price = await mudPrice(blockTag)
+    console.log('blockTag --->', request.query.blockTag, block_tag)
+    const price = await mudPrice(block_tag)
     console.log('price', price)
 
-    return { ...price, blockTag }
+    return {
+      code: 0,
+      msg: '',
+      data: { ...price, blockTag: block_tag }
+    }
   })
 
   // 获取配置列表信息
@@ -67,7 +71,7 @@ export default async function (fastify, opts) {
     }
 
     // 检查用户是否存在，只要存在就一定是绑定过了，不允许重复绑定
-    const user = db.prepare('SELECT * FROM user WHERE address = ?').get(address)
+    let user = db.prepare('SELECT * FROM user WHERE address = ?').get(address)
     if (user) {
       return {
         code: ErrorBusinessCode,
@@ -92,10 +96,12 @@ export default async function (fastify, opts) {
     const info = db.prepare('INSERT INTO user (address, parent, ref, parent_ref) VALUES (?, ?, ?, ?)').run(address, parent.address, ref, parent_ref)
     console.log(info)
 
+    user = db.prepare('SELECT * FROM user WHERE address = ?').get(address)
+
     reply.send({
       code: 0,
       msg: '',
-      data: { ref, parent: parent.address, id: info.lastInsertRowid }
+      data: user
     })
   })
 
@@ -203,20 +209,18 @@ export default async function (fastify, opts) {
     }
 
     // 将质押信息插入数据库
-    const stmt = db.prepare('INSERT INTO delegate (address, mud, min_usdt, hash) VALUES (?, ?, ?, ?)')
-    const info = stmt.run(address, mud, min_usdt, hash)
-    console.log(info)
+    db.prepare('INSERT INTO delegate (address, mud, min_usdt, hash) VALUES (?, ?, ?, ?)').run(address, mud, min_usdt, hash)
 
+    const delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
     reply.send({
       code: 0,
       msg: '',
-      data: Object.assign({}, { id: info.lastInsertRowid })
+      data: delegate
     })
   })
 
   // 用户质押信息
-  // TODO: 为了防止恶意插入数据，用户质押的数目超过1000条，我们只有拿到回执了我们才会插入数据
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "mud": 888888, "hash": "0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156"}' http://127.0.0.1:3000/delegate
+  // http://127.0.0.1:3000/delegate?hash=0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156
   fastify.get('/delegate', function (request, reply) {
     let { hash } = request.body
     const { db } = fastify
@@ -332,7 +336,7 @@ export default async function (fastify, opts) {
       }
     }
 
-    const delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
+    let delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
 
     // 考虑重复确认的问题
     if (delegate.status !== DelegateStatusDelegating) {
@@ -494,10 +498,11 @@ export default async function (fastify, opts) {
 
     transaction()
 
+    delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
     reply.send({
       code: 0,
       msg: 'success...',
-      data: {}
+      data: delegate
     })
   })
 
@@ -517,14 +522,15 @@ export default async function (fastify, opts) {
       }
     }
 
-    // 将质押信息插入数据库
-    const info = db.prepare('UPDATE delegate SET status = ? WHERE undelegate_hash = ?').run(DelegateStatusUndelegating, hash)
-    console.log(info)
+    // 将质押信息更新到数据库
+    db.prepare('UPDATE delegate SET status = ? WHERE undelegate_hash = ?').run(DelegateStatusUndelegating, hash)
+
+    const delegate = db.prepare('SELECT * FROM delegate WHERE undelegate_hash = ?').get(hash)
 
     reply.send({
       code: 0,
       msg: '',
-      data: Object.assign({}, { id: info.lastInsertRowid })
+      data: delegate
     })
   })
 
@@ -613,7 +619,7 @@ export default async function (fastify, opts) {
       }
     }
 
-    const delegate = db.prepare('SELECT * FROM delegate WHERE undelegate_hash = ?').get(hash)
+    let delegate = db.prepare('SELECT * FROM delegate WHERE undelegate_hash = ?').get(hash)
 
     // 考虑重复确认的问题
     // TODO 有可能用户根本没有发undelegate 消息给后台
@@ -691,10 +697,12 @@ export default async function (fastify, opts) {
 
     transaction()
 
+    delegate = db.prepare('SELECT * FROM delegate WHERE undelegate_hash = ?').get(hash)
+
     reply.send({
       code: 0,
       msg: 'success...',
-      data: {}
+      data: delegate
     })
   })
 
@@ -770,18 +778,17 @@ export default async function (fastify, opts) {
     }
   })
 
-  // 获取用户的奖励信息
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/claim
-  fastify.get('/claim', async function (request, reply) {
+  // 获取用户的最新奖励信息
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/latest-claim
+  fastify.get('/latest-claim', async function (request, reply) {
     const { db } = fastify
     return {
       code: 0,
       msg: '',
       data: {
-        address: '0x00000Be6819f41400225702D32d3dd23663Dd690',
         usdt: 100000000000,
-        mudMin: 1000000000,
-        rewardIds: { dynamic: [1, 2, 6], static: [2, 8] }
+        mud: 1000000000,
+        reward_ids: { dynamic: [1, 2, 6], static: [2, 8] }
       }
     }
   })
@@ -790,7 +797,7 @@ export default async function (fastify, opts) {
   // https://coinsbench.com/how-to-sign-a-message-with-ethers-js-v6-and-then-validate-it-in-solidity-89cd4f172dfd
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/sign-claim
   fastify.post('/sign-claim', async function (request, reply) {
-    let { address, usdt, mudMin, rewardIds, deadline } = request.body
+    let { address, usdt, mud_min, reward_ids, deadline } = request.body
     address = address.toLowerCase()
 
     if (!address) {
@@ -807,13 +814,52 @@ export default async function (fastify, opts) {
     const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
     const signer = new Wallet(privateKey)
 
-    const signature = await signer.signMessage(address + usdt + mudMin + rewardIds + deadline)
+    const signature = await signer.signMessage(address + usdt + mud_min + reward_ids + deadline)
 
     reply.send({
       code: 0,
       msg: '',
       data: { signature }
     })
+  })
+
+  // 发起领取奖励之后，更新奖励列表
+  //
+  fastify.post('/claim', async function (request, reply) {
+    const { db } = fastify
+    let { address, usdt, min_mud, reward_ids } = request.query
+
+    return {
+      code: 0,
+      msg: '',
+      data: {}
+    }
+  })
+
+  // 获取奖励信息
+  //
+  fastify.get('/claim', async function (request, reply) {
+    const { db } = fastify
+    let { hash } = request.query
+
+    return {
+      code: 0,
+      msg: '',
+      data: {}
+    }
+  })
+
+  // 发起领取奖励拿到交易回执之后更新奖励列表
+  //
+  fastify.post('/confirm-claim', async function (request, reply) {
+    const { db } = fastify
+    let { hash } = request.query
+
+    return {
+      code: 0,
+      msg: '',
+      data: {}
+    }
   })
 
   // 领取的奖励列表

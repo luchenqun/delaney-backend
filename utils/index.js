@@ -45,10 +45,10 @@ const getPrice = (sqrtPriceX96, decimal0, decimal1) => {
   const buyUsdtWei = buyUsdt * 10 ** parseInt(decimal0)
   const buyMudWei = buyMud * 10 ** parseInt(decimal1)
   const price = {
-    buyUsdt,
-    buyMud,
-    buyUsdtWei,
-    buyMudWei
+    buy_usdt: buyUsdt,
+    buy_mud: buyMud,
+    buy_usdt_wei: buyUsdtWei,
+    buy_mud_wei: buyMudWei
   }
   return price
 }
@@ -86,7 +86,7 @@ export const mudPrice = async (blockTag) => {
     number: block.number,
     hash: block.hash,
     time: new Date(block.timestamp * 1000).toISOString(),
-    sqrtPriceX96: slot0.sqrtPriceX96.toString()
+    sqrt_price_x96: slot0.sqrtPriceX96.toString()
   }
 }
 
