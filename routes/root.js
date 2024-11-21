@@ -616,13 +616,13 @@ export default async function (fastify, opts) {
       // 上级用户信息更新：团队星级，直推以及团队的mud/usdt的更新
       for (let i = 0; i < parents.length; i++) {
         const user = parents[i]
-        // 第一个节点累计直推金额
+        // 减掉第一个节点的累计直推金额
         if (i == 0) {
           user.sub_mud -= mud
           user.sub_usdt -= usdt
         }
 
-        // 所有父节点都需要加团队金额
+        // 所有父节点都需要减掉团队金额
         user.team_mud -= mud
         user.team_usdt -= usdt
 
