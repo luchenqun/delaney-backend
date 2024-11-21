@@ -463,7 +463,7 @@ export default async function (fastify, opts) {
         address: '0x00000Be6819f41400225702D32d3dd23663Dd690',
         usdt: 100000000000,
         mudMin: 1000000000,
-        claimIds: { dynamic: [1, 2, 6], static: [2, 8] }
+        rewardIds: { dynamic: [1, 2, 6], static: [2, 8] }
       }
     }
   })
@@ -472,7 +472,7 @@ export default async function (fastify, opts) {
   // https://coinsbench.com/how-to-sign-a-message-with-ethers-js-v6-and-then-validate-it-in-solidity-89cd4f172dfd
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/sign-claim
   fastify.post('/sign-claim', async function (request, reply) {
-    let { address, usdt, mudMin, claimIds, deadline } = request.body
+    let { address, usdt, mudMin, rewardIds, deadline } = request.body
     address = address.toLowerCase()
 
     if (!address) {
@@ -483,13 +483,13 @@ export default async function (fastify, opts) {
       }
     }
 
-    // claimIds 是用户去领取了哪些奖励id，比如 "{dynamic:[1,5,6], static:[1,8,9]}"
-    // TODO: 检查 claimIds 对应的 usdt 之和 是否等于用户传进来的usdt的数值
+    // rewardIds 是用户去领取了哪些奖励id，比如 "{dynamic:[1,5,6], static:[1,8,9]}"
+    // TODO: 检查 rewardIds 对应的 usdt 之和 是否等于用户传进来的usdt的数值
 
     const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
     const signer = new Wallet(privateKey)
 
-    const signature = await signer.signMessage(address + usdt + mudMin + claimIds + deadline)
+    const signature = await signer.signMessage(address + usdt + mudMin + rewardIds + deadline)
 
     reply.send({
       code: 0,
