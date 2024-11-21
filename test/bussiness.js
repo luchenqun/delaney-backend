@@ -36,6 +36,7 @@ const main = async () => {
 
   const rpc = 'http://127.0.0.1:8545'
   const provider = new ethers.JsonRpcProvider(rpc)
+  provider.pollingInterval = 200
 
   const url = 'http://127.0.0.1:3000'
   const client = axios.create({
@@ -121,6 +122,7 @@ const main = async () => {
     const allowance = await mud.allowance(delegator.address, delaney.target)
     if (allowance == 0n) {
       const amount = 1000000000 * 1000000
+
       const tx = await mud.connect(delegator).approve(delaney.target, amount)
       await tx.wait()
     }
