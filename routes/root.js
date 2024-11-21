@@ -823,7 +823,7 @@ export default async function (fastify, opts) {
     })
   })
 
-  // 发起领取奖励之后，更新奖励列表
+  // 发起领取奖励拿到交易哈希之后， 将奖励信息写入数据库
   //
   fastify.post('/claim', async function (request, reply) {
     const { db } = fastify
