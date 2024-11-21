@@ -10,7 +10,8 @@ export const ErrorBusinessMsg = `business not allow: `
 export const DelegateStatusDelegating = 0
 export const DelegateStatusSuccess = 1
 export const DelegateStatusFail = 2
-export const DelegateStatusWithdrew = 3
+export const DelegateStatusUndelegating = 3
+export const DelegateStatusWithdrew = 4
 
 export const RewardMaxDepth = 5
 export const RewardMaxStar = 5

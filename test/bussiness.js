@@ -128,6 +128,10 @@ const main = async () => {
 
     // 等待交易上链
     await tx.wait()
+
+    // 给后台确认质押金额
+    data = decodeReply(await client.post('/confirm-delegate', { hash: tx.hash }))
+    console.log('confirm delegate', data)
   }
 }
 
