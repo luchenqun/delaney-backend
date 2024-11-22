@@ -2,6 +2,17 @@ import { mudPrice, pageSql } from '../utils/index.js'
 import { ErrorInputCode, ErrorInputMsg, ErrorDataNotExistCode, ErrorDataNotExistMsg, ErrorBusinessCode, ErrorBusinessMsg } from '../utils/constant.js'
 import { DelegateStatusDelegating, DelegateStatusSuccess, DelegateStatusFail, DelegateStatusUndelegating, DelegateStatusWithdrew } from '../utils/constant.js'
 import { RewardMaxDepth, RewardPersonKey, RewardTeamKey, RewardTypePerson, RewardTypeTeam, RewardMaxStar } from '../utils/constant.js'
+import {
+  MessageTypeCreateUser,
+  MessageTypeDelegate,
+  MessageTypeConfirmDelegate,
+  MessageTypeUndelegate,
+  MessageTypeConfirmUndelegate,
+  MessageTypeClaim,
+  MessageTypeConfirmClaim,
+  MessageTypePersonReward,
+  MessageTypeTeamReward
+} from '../utils/constant.js'
 import { randRef, provider, delaney, delaneyAddress } from '../utils/index.js'
 
 import { ZeroAddress, ZeroHash, Wallet } from 'ethers'
@@ -95,6 +106,7 @@ export default async function (fastify, opts) {
     const ref = randRef() // 数据库里面已经做了ref不允许重复存在的限制。所以有一定概率注册失败，如果注册失败，让前端再重新注册一下
     const info = db.prepare('INSERT INTO user (address, parent, ref, parent_ref) VALUES (?, ?, ?, ?)').run(address, parent.address, ref, parent_ref)
     console.log(info)
+    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(address, MessageTypeCreateUser, '注册', '账户注册成功')
 
     user = db.prepare('SELECT * FROM user WHERE address = ?').get(address)
 
@@ -210,6 +222,7 @@ export default async function (fastify, opts) {
 
     // 将质押信息插入数据库
     db.prepare('INSERT INTO delegate (address, mud, min_usdt, hash) VALUES (?, ?, ?, ?)').run(address, mud, min_usdt, hash)
+    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(address, MessageTypeDelegate, '质押', '收到质押信息')
 
     const delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
     reply.send({
@@ -497,6 +510,8 @@ export default async function (fastify, opts) {
     })
 
     transaction()
+
+    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(delegate.address, MessageTypeDelegate, '质押', '质押成功')
 
     delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
     reply.send({

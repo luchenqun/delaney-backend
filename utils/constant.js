@@ -21,3 +21,13 @@ export const RewardTypeTeam = 1
 
 export const RewardPersonKey = 'person_reward_level'
 export const RewardTeamKey = 'team_reward_level'
+
+export const MessageTypeCreateUser = 0
+export const MessageTypeDelegate = 1
+export const MessageTypeConfirmDelegate = 2
+export const MessageTypeUndelegate = 3
+export const MessageTypeConfirmUndelegate = 4
+export const MessageTypeClaim = 5
+export const MessageTypeConfirmClaim = 6
+export const MessageTypePersonReward = 7
+export const MessageTypeTeamReward = 8
