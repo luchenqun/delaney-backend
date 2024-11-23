@@ -31,3 +31,7 @@ export const MessageTypeClaim = 5
 export const MessageTypeConfirmClaim = 6
 export const MessageTypePersonReward = 7
 export const MessageTypeTeamReward = 8
+
+export const ClaimStatusReceiving = 0
+export const ClaimStatusReceived = 1
+export const ClaimStatusReceiveFailed = 2

@@ -2,6 +2,7 @@ import { mudPrice, pageSql } from '../utils/index.js'
 import { ErrorInputCode, ErrorInputMsg, ErrorDataNotExistCode, ErrorDataNotExistMsg, ErrorBusinessCode, ErrorBusinessMsg } from '../utils/constant.js'
 import { DelegateStatusDelegating, DelegateStatusSuccess, DelegateStatusFail, DelegateStatusUndelegating, DelegateStatusWithdrew } from '../utils/constant.js'
 import { RewardMaxDepth, RewardPersonKey, RewardTeamKey, RewardTypePerson, RewardTypeTeam, RewardMaxStar } from '../utils/constant.js'
+import { ClaimStatusReceiving, ClaimStatusReceived, ClaimStatusReceiveFailed } from '../utils/constant.js'
 import {
   MessageTypeCreateUser,
   MessageTypeDelegate,
@@ -16,6 +17,8 @@ import {
 import { randRef, provider, delaney, delaneyAddress } from '../utils/index.js'
 
 import { ZeroAddress, ZeroHash, Wallet } from 'ethers'
+import bytes_1 from "@ethersproject/bytes";
+import hash_1 from "@ethersproject/hash";
 
 BigInt.prototype.toJSON = function () {
   return this.toString()
@@ -796,21 +799,56 @@ export default async function (fastify, opts) {
   // 获取用户的最新奖励信息
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/latest-claim
   fastify.get('/latest-claim', async function (request, reply) {
-    const { db } = fastify
+    const { db } = fastify;
+    const { address } = request.body;
+
+    let tatalUsdt;
+    let statics = [];
+    let stmt = db.prepare(`SELECT id, usdt FROM static_reward WHERE address = ? AND status = 0 AND unlock_time < strftime('%s', 'now')`);
+    stmt.all([address], (err, rows) => {
+      if (err) {
+        throw err;
+      }
+
+      rows.forEach((row) => {
+        const { id, usdt } = row;
+        statics.push(id);
+        tatalUsdt += usdt;
+      });
+    });
+    stmt.finalize();
+
+    let dynamics = [];
+    stmt = db.prepare(`SELECT id, usdt FROM dynamic_reward WHERE address = ? AND status = 0`);
+    stmt.all([address], (err, rows) => {
+      if (err) {
+        throw err;
+      }
+
+      rows.forEach((row) => {
+        const { id, usdt } = row;
+        dynamics.push(id);
+        tatalUsdt += usdt;
+      });
+    });
+    stmt.finalize();
+
+    let mud = tatalUsdt / mudPrice();
+
     return {
       code: 0,
       msg: '',
       data: {
-        usdt: 100000000000,
-        mud: 1000000000,
-        reward_ids: { dynamic: [1, 2, 6], static: [2, 8] }
+        usdt: tatalUsdt,
+        mud: mud,
+        reward_ids: { dynamics: dynamics, statics: statics }
       }
     }
   })
 
   // 用户获取领取奖励的签名
   // https://coinsbench.com/how-to-sign-a-message-with-ethers-js-v6-and-then-validate-it-in-solidity-89cd4f172dfd
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/sign-claim
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "usdt":0, "mud_min":0, "reward_ids": {"dynamics":[1, 2, 6], "statics":[2, 8]}}' http://127.0.0.1:3000/sign-claim
   fastify.post('/sign-claim', async function (request, reply) {
     let { address, usdt, mud_min, reward_ids, deadline } = request.body
     address = address.toLowerCase()
@@ -823,72 +861,194 @@ export default async function (fastify, opts) {
       }
     }
 
-    // rewardIds 是用户去领取了哪些奖励id，比如 "{dynamic:[1,5,6], static:[1,8,9]}"
+    // rewardIds 是用户去领取了哪些奖励id，比如 "{dynamics:[1,5,6], statics:[1,8,9]}"
     // TODO: 检查 rewardIds 对应的 usdt 之和 是否等于用户传进来的usdt的数值
+    let totalUsdt;
+    const { statics, dynamics } = reward_ids;
+    let placeholders = statics.map(() => '?').join(', ');
+    let stmt = fastify.db.prepare('SELECT usdt FROM static_reward WHERE id IN (${placeholders})');
+    stmt.all(statics, (err, rows) => {
+      if (err) {
+        throw err;
+      }
+
+      rows.forEach((row) => {
+        const { usdt } = row;
+        totalUsdt += usdt;
+      });
+    });
+    stmt.finalize();
+
+    placeholders = dynamics.map(() => '?').join(', ');
+    stmt = fastify.db.prepare('SELECT usdt FROM dynamic_reward WHERE id IN (${placeholders})');
+    stmt.all(dynamics, (err, rows) => {
+      if (err) {
+        throw err;
+      }
+
+      rows.forEach((row) => {
+        const { usdt } = row;
+        totalUsdt += usdt;
+      });
+    });
+    stmt.finalize();
+
+    if (totalUsdt !== usdt) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'Input parameter usdt verification failed',
+        data: {}
+      }
+    }
 
     const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
     const signer = new Wallet(privateKey)
 
-    const signature = await signer.signMessage(address + usdt + mud_min + reward_ids + deadline)
+    const dataHash = hash_1.id(address + usdt + mudMin + claimIds + deadline);
+    const dataHashBytes = bytes_1.arrayify(dataHash);
+
+    const signature = await signer.signMessage(dataHashBytes)
 
     reply.send({
       code: 0,
       msg: '',
-      data: { signature }
+      data: { signature: signature }
     })
   })
 
   // 发起领取奖励拿到交易哈希之后， 将奖励信息写入数据库
-  //
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "usdt":0, "mud_min":0, "reward_ids": {"dynamics":[1, 2, 6], "statics":[2, 8]}, "hash":""}' http://127.0.0.1:3000/claim
   fastify.post('/claim', async function (request, reply) {
-    const { db } = fastify
-    let { address, usdt, min_mud, reward_ids } = request.query
+    const { db } = fastify;
+    let { address, usdt, mud_min, reward_ids, hash } = request.query;
 
+    db.prepare('INSERT INTO claim (address, usdt, min_mud, rewardIds, hash, status) VALUES (?, ?, ?, ?, ?, ?)').run(address, usdt, min_mud, reward_ids, hash, ClaimStatusReceiving);
+
+    const claim = db.prepare('SELECT * FROM claim WHERE hash = ?').get(hash);
     return {
       code: 0,
       msg: '',
-      data: {}
+      data: claim
     }
   })
 
   // 获取奖励信息
-  //
+  // curl -X GET  -H "Content-Type: application/json" http://127.0.0.1:3000/claim?hash=0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156
   fastify.get('/claim', async function (request, reply) {
-    const { db } = fastify
-    let { hash } = request.query
+    const { db } = fastify;
+    let { hash } = request.query;
+    console.log("get claim hash", hash);
+    if (!hash) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'hash',
+        data: {}
+      }
+    }
+
+    const claim = db.prepare('SELECT * FROM claim WHERE hash = ? ').get(hash);
 
     return {
       code: 0,
       msg: '',
-      data: {}
+      data: claim
     }
   })
 
   // 发起领取奖励拿到交易回执之后更新奖励列表
-  //
+  // curl -X POST  -H "Content-Type: application/json"  -d '{}'  http://127.0.0.1:3000/confirm-claim?hash=0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156
   fastify.post('/confirm-claim', async function (request, reply) {
-    const { db } = fastify
-    let { hash } = request.query
+    const { db } = fastify;
+    let { hash } = request.query;
+
+    const receipt = await provider.getTransactionReceipt(hash);
+    if (!receipt) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'receipt is not exist',
+        data: {}
+      };
+    }
+
+    // to 要等于我们的合约是为了防止别人搞个假事件作弊
+    if (receipt.to.toLowerCase() !== delaneyAddress.toLowerCase()) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'unknow error',
+        data: {}
+      };
+    }
+
+    // 处理交易失败
+    if (receipt.status == 0) {
+      const info = db.prepare('UPDATE claim SET status = ? WHERE hash = ?').run(ClaimStatusReceiveFailed, hash);
+      console.log(info);
+      return {
+        code: ErrorBusinessCode,
+        msg: 'claim failed',
+        data: {}
+      };
+    }
+
+    const logs = receipt.logs || [];
+    let findLog = false;
+    let logArgs;
+    for (const log of logs) {
+      const logDescription = delaney.interface.parseLog(log);
+      if (logDescription && logDescription.name == 'Claim') {
+        logArgs = logDescription.args
+        findLog = true
+        break
+      }
+    }
+
+    if (!findLog) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'unknow error',
+        data: {}
+      };
+    }
+
+    const from = receipt.from.toLowerCase();
+    const cid = logArgs[1];
+    const rewardIds = logArgs[4];
+    const signature = logArgs[5];
+    console.log({ id: cid });
+
+    let { delegator, minMud, usdt, deadline } = (await delaney.claimants(cid)).toObject(true);
+    db.prepare('UPDATE claim SET cid = ？, deadline = ？, status = ?, signature = ? WHERE hash = ?').run(cid, deadline, ClaimStatusReceived, signature, hash);
+
+    let obj = JSON.parse(rewardIds);
+    const { statics, dynamics } = obj;
+
+    let placeholders = statics.map(() => '?').join(', ');
+    db.prepare(`UPDATE static_reward SET claim_id = ?, hash = ?, status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(cid, hash, ClaimStatusReceived, address, statics);
+
+    placeholders = dynamics.map(() => '?').join(', ');
+    db.prepare(`UPDATE dynamic_reward SET claim_id = ?, hash = ?, status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(cid, hash, ClaimStatusReceived, address, dynamics);
+
+    const claim = db.prepare('SELECT * FROM claim WHERE hash = ?').get(hash);
 
     return {
       code: 0,
       msg: '',
-      data: {}
+      data: claim
     }
   })
 
   // 领取的奖励列表
   // curl http://127.0.0.1:3000/claims | jq
   fastify.get('/claims', async function (request, reply) {
-    const { db } = fastify
-    let { page, page_size, sort_field, sort_order, filters } = request.query
-    page = parseInt(page || 1)
-    page_size = parseInt(page_size || 10)
+    const { db } = fastify;
+    let { page, page_size, sort_field, sort_order, filters } = request.query;
+    page = parseInt(page || 1);
+    page_size = parseInt(page_size || 10);
 
-    const { sql_base, sql_count } = pageSql('claim', page, page_size, sort_field, sort_order, filters)
-    const items = db.prepare(sql_base).all()
-    const { total } = db.prepare(sql_count).get()
-    const pages = Math.ceil(total / page_size)
+    const { sql_base, sql_count } = pageSql('claim', page, page_size, sort_field, sort_order, filters);
+    const items = db.prepare(sql_base).all();
+    const { total } = db.prepare(sql_count).get();
+    const pages = Math.ceil(total / page_size);
 
     return {
       code: 0,
@@ -898,7 +1058,7 @@ export default async function (fastify, opts) {
         pages,
         items
       }
-    }
+    };
   })
 
   // 消息列表

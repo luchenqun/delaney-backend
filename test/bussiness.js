@@ -146,10 +146,31 @@ const main = async () => {
     data = decodeReply(await client.post('/confirm-delegate', { hash: tx.hash }))
     console.log('confirm delegate', data)
   }
+
+  // 用户获取最新的奖励信息
+  {
+    data = decodeReply(await client.get(`/latest-claim?address=${delegator.address}`))
+    console.log('latest-claim', data)
+
+    // 生成签名
+    const { usdt, mud, reward_ids } = data
+    data = decodeReply(await client.post('/sign-claim', { address: delegator.address, usdt: usdt, mud_min: mud, reward_ids: reward_ids, deadline: deadline }))
+    console.log('sign-claim', data)
+
+    const { signature } = data
+    const tx = await delaney.connect(delegator).claim(min_usdt, mud, reward_ids, signature, deadline)
+    // 领取奖励
+    data = decodeReply(await client.post('/claim', { address: delegator.address, usdt: usdt, mud_min: mud, reward_ids: reward_ids, hash: tx.hash }))
+    console.log('claim', data)
+
+    // 确认领取
+    data = decodeReply(await client.post(`/confirm-claim?hash=${tx.hash}`))
+    console.log('confirm-claim', data)
+  }
 }
 
 main()
-  .then(() => {})
+  .then(() => { })
   .catch((err) => {
     console.log(err)
   })
