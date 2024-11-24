@@ -66,16 +66,15 @@ const main = async () => {
   // data = decodeReply(await client.get(`/users`, { params: { page: 1, page_size: 10, sort_field: 'star', sort_order: 'DESC', filters: { star: '>=3', id: '>=1' } } }))
   // console.log(data)
 
-  {
-    data = decodeReply(await client.get(`/latest-claim?address=${owner.address}`))
-    console.log('latest-claim', data)
+  // {
+  //   data = decodeReply(await client.get(`/latest-claim?address=${owner.address}`))
+  //   console.log('latest-claim', data)
 
-    const { usdt, mud, reward_ids } = data
-    const mud_min = parseInt(mud / 10)
-    data = decodeReply(await client.post('/sign-claim', { address: owner.address, usdt, mud_min, reward_ids }))
-    console.log('sign-claim', data)
-  }
-  return
+  //   const { usdt, mud, reward_ids } = data
+  //   const mud_min = parseInt(mud / 10)
+  //   data = decodeReply(await client.post('/sign-claim', { address: owner.address, usdt, mud_min, reward_ids }))
+  //   console.log('sign-claim', data)
+  // }
 
   // 部署合约
   const pool = (await provider.getCode(poolAddress)).length > 2 ? new ethers.Contract(poolAddress, poolAbi, owner) : await deploy(owner, poolAbi, poolBytecode)
@@ -171,14 +170,15 @@ const main = async () => {
 
   // 用户获取最新的奖励信息
   {
-    data = decodeReply(await client.get(`/latest-claim?address=${delegator.address}`))
+    data = decodeReply(await client.get(`/latest-claim?address=${owner.address}`))
     console.log('latest-claim', data)
 
-    return
-    // 生成签名
     const { usdt, mud, reward_ids } = data
-    data = decodeReply(await client.post('/sign-claim', { address: delegator.address, usdt: usdt, mud_min: mud, reward_ids: reward_ids, deadline: deadline }))
+    const mud_min = parseInt(mud / 10)
+    data = decodeReply(await client.post('/sign-claim', { address: owner.address, usdt, mud_min, reward_ids }))
     console.log('sign-claim', data)
+
+    return
 
     const { signature } = data
     const tx = await delaney.connect(delegator).claim(min_usdt, mud, reward_ids, signature, deadline)
