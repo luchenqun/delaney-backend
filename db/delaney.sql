@@ -91,7 +91,7 @@ CREATE TABLE
   IF NOT EXISTS dynamic_reward (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     delegate_id INT NOT NULL,
-    claim_id INT NOT NULL,
+    claim_id INT NOT NULL DEFAULT -1,
     address CHAR(42) NOT NULL,
     usdt INT NOT NULL DEFAULT 0,
     type INT NOT NULL DEFAULT 0,
@@ -106,7 +106,7 @@ CREATE TABLE
   IF NOT EXISTS static_reward (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     delegate_id INT NOT NULL,
-    claim_id INT NOT NULL,
+    claim_id INT NOT NULL DEFAULT -1,
     period INT NOT NULL,
     address CHAR(42) NOT NULL,
     usdt INT NOT NULL DEFAULT 0,

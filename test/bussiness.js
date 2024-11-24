@@ -23,6 +23,10 @@ const decodeReply = (reply) => {
   throw data.msg
 }
 
+const sleep = (ms) => {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 const main = async () => {
   const poolArtifact = await fs.readJSON(path.join(contractDir, 'UniswapV3Pool.sol/UniswapV3Pool.json'))
   const mudArtifact = await fs.readJSON(path.join(contractDir, 'MetaUserDAOToken.sol/MetaUserDAOToken.json'))
@@ -92,7 +96,7 @@ const main = async () => {
   {
     const periodDuration = await delaney.periodDuration()
     if (periodDuration > 60) {
-      const tx = await delaney.setPeriodDuration(8) // 方便测试每个周期设为8秒
+      const tx = await delaney.setPeriodDuration(1) // 方便测试每个周期设为1秒
       await tx.wait()
     }
   }
@@ -165,12 +169,13 @@ const main = async () => {
 
   // 用户获取最新的奖励信息
   {
+    await sleep(8000) // 等待8秒有静态奖励产出
     data = decodeReply(await client.get(`/latest-claim?address=${owner.address}`))
     console.log('latest-claim', data)
 
     const { usdt, mud, reward_ids } = data
     const mud_min = parseInt(mud / 10)
-    data = decodeReply(await client.post('/sign-claim', { address: delegator.address, usdt: usdt, mud_min: mud_min, reward_ids: reward_ids }))
+    data = decodeReply(await client.post('/sign-claim', { address: owner.address, usdt: usdt, mud_min: mud_min, reward_ids: reward_ids }))
     console.log('sign-claim', data)
     return
 
@@ -182,7 +187,6 @@ const main = async () => {
     console.log('claim request params', reward_ids)
     data = decodeReply(await client.post('/claim', { address: delegator.address, usdt: usdt, mud_min: mud, reward_ids: reward_ids, hash: tx.hash }))
     console.log('claim', data)
-
 
     // 确认领取
     data = decodeReply(await client.post(`/confirm-claim?hash=${tx.hash}`))
