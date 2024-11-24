@@ -409,17 +409,19 @@ export default async function (fastify, opts) {
       db.prepare('UPDATE user SET mud = ?, usdt = ? WHERE address = ?').run(self.mud + mud, self.usdt + usdt, self.address)
 
       // 分发动态奖励中的个人奖励
-      for (let i = 0; i < RewardMaxDepth; i++) {
-        const user = parents[i]
-        // 个人投资额度需要大于某个数才能获取个人奖励
-        // TODO 测试阶段直接分发
-        if (user.usdt >= config['preson_reward_min_usdt'] || true) {
-          const rewardUsdt = parseInt((config[RewardPersonKey + (i + 1)] * usdt) / 100)
-          db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, rewardUsdt, RewardTypePerson)
-        }
-        // 没5层那就直接退出
-        if (user.parent === ZeroAddress) {
-          break
+      if (parents.length > 0) {
+        for (let i = 0; i < RewardMaxDepth; i++) {
+          const user = parents[i]
+          // 个人投资额度需要大于某个数才能获取个人奖励
+          // TODO 测试阶段直接分发
+          if (user.usdt >= config['preson_reward_min_usdt'] || true) {
+            const rewardUsdt = parseInt((config[RewardPersonKey + (i + 1)] * usdt) / 100)
+            db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, rewardUsdt, RewardTypePerson)
+          }
+          // 没5层那就直接退出
+          if (user.parent === ZeroAddress) {
+            break
+          }
         }
       }
 
@@ -807,10 +809,12 @@ export default async function (fastify, opts) {
   })
 
   // 获取用户的最新奖励信息
-  // curl http://127.0.0.1:3000/latest-claim?address=0x55555d6c72886e5500a9410ca15d08a16011ed95
+  // curl http://127.0.0.1:3000/latest-claim?address=0x00000be6819f41400225702d32d3dd23663dd690
   fastify.get('/latest-claim', async function (request, reply) {
     const { db } = fastify
-    const { address } = request.query
+    let { address } = request.query
+    address = address.toLowerCase()
+    console.log({ address })
 
     let tatal_usdt = 0
 
@@ -848,10 +852,12 @@ export default async function (fastify, opts) {
   // https://coinsbench.com/how-to-sign-a-message-with-ethers-js-v6-and-then-validate-it-in-solidity-89cd4f172dfd
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "usdt":0, "mud_min":0, "reward_ids": {"dynamics":[1, 2, 6], "statics":[2, 8]}}' http://127.0.0.1:3000/sign-claim
   fastify.post('/sign-claim', async function (request, reply) {
-    let { address, usdt, mud_min, reward_ids, deadline } = request.body
+    const { db } = fastify
+    let { address, usdt, mud_min, reward_ids } = request.body
     address = address.toLowerCase()
 
-    if (!address) {
+    const deadline = parseInt(new Date().getTime() / 1000) + 10 * 60 // 十分钟内需要上链
+    if (!address || !usdt || mud_min == undefined || !reward_ids) {
       return {
         code: ErrorInputCode,
         msg: ErrorInputMsg + 'address',
@@ -861,40 +867,33 @@ export default async function (fastify, opts) {
 
     // rewardIds 是用户去领取了哪些奖励id，比如 "{dynamics:[1,5,6], statics:[1,8,9]}"
     // TODO: 检查 rewardIds 对应的 usdt 之和 是否等于用户传进来的usdt的数值
-    let totalUsdt
+    let total_usdt = 0
     const { statics, dynamics } = reward_ids
-    let placeholders = statics.map(() => '?').join(', ')
-    let stmt = fastify.db.prepare('SELECT usdt FROM static_reward WHERE id IN (${placeholders})')
-    stmt.all(statics, (err, rows) => {
-      if (err) {
-        throw err
+
+    if (Array.isArray(statics)) {
+      const dynamic_rewards = db
+        .prepare(`SELECT usdt FROM static_reward WHERE address = ? AND status = ? AND id IN (${statics.map(() => '?').join(',')})`)
+        .all([address, RewardUnclaimed, ...statics])
+      for (const reward of dynamic_rewards) {
+        const { usdt } = reward
+        total_usdt += usdt
       }
+    }
 
-      rows.forEach((row) => {
-        const { usdt } = row
-        totalUsdt += usdt
-      })
-    })
-    stmt.finalize()
-
-    placeholders = dynamics.map(() => '?').join(', ')
-    stmt = fastify.db.prepare('SELECT usdt FROM dynamic_reward WHERE id IN (${placeholders})')
-    stmt.all(dynamics, (err, rows) => {
-      if (err) {
-        throw err
+    if (Array.isArray(dynamics)) {
+      const dynamic_rewards = db
+        .prepare(`SELECT usdt FROM dynamic_reward WHERE address = ? AND status = ? AND id IN (${dynamics.map(() => '?').join(',')})`)
+        .all([address, RewardUnclaimed, ...dynamics])
+      for (const reward of dynamic_rewards) {
+        const { usdt } = reward
+        total_usdt += usdt
       }
+    }
 
-      rows.forEach((row) => {
-        const { usdt } = row
-        totalUsdt += usdt
-      })
-    })
-    stmt.finalize()
-
-    if (totalUsdt !== usdt) {
+    if (total_usdt !== usdt) {
       return {
         code: ErrorBusinessCode,
-        msg: 'Input parameter usdt verification failed',
+        msg: 'input parameter usdt verification failed',
         data: {}
       }
     }
@@ -902,15 +901,15 @@ export default async function (fastify, opts) {
     const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
     const signer = new Wallet(privateKey)
 
-    const dataHash = hash_1.id(address + usdt + mudMin + claimIds + deadline)
-    const dataHashBytes = bytes_1.arrayify(dataHash)
+    const digest = hash_1.id(address + usdt + mud_min + JSON.stringify(reward_ids) + deadline)
+    const digestBytes = bytes_1.arrayify(digest)
 
-    const signature = await signer.signMessage(dataHashBytes)
+    const signature = await signer.signMessage(digestBytes)
 
     reply.send({
       code: 0,
       msg: '',
-      data: { signature: signature }
+      data: { address, usdt, mud_min, reward_ids: JSON.stringify(reward_ids), signature }
     })
   })
 

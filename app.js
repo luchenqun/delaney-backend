@@ -58,7 +58,7 @@ export default async function (fastify, opts) {
     () => {
       // create table  init
       const sqliteCreateTableFile = fs.readFileSync(__dbCreateTablePath, 'utf8')
-      const db = new Database(__dbPath, { verbose: () => {} })
+      const db = new Database(__dbPath, { verbose: console.log })
       db.exec(sqliteCreateTableFile)
 
       fastify.scheduler.addSimpleIntervalJob(job)

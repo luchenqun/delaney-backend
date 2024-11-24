@@ -48,9 +48,6 @@ const main = async () => {
 
   let data
 
-  // data = decodeReply(await client.get(`/users`, { params: { page: 1, page_size: 10, sort_field: 'star', sort_order: 'DESC', filters: { star: '>=3', id: '>=1' } } }))
-  // console.log(data)
-
   const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
   const owner = new ethers.Wallet(privateKey, provider)
 
@@ -65,6 +62,20 @@ const main = async () => {
     '5352cfb603f3755c71250f24aa1291e85dbc73a01e9c91e7568cd081b0be04db',
     delegatorPrivateKey
   ]
+
+  // data = decodeReply(await client.get(`/users`, { params: { page: 1, page_size: 10, sort_field: 'star', sort_order: 'DESC', filters: { star: '>=3', id: '>=1' } } }))
+  // console.log(data)
+
+  {
+    data = decodeReply(await client.get(`/latest-claim?address=${owner.address}`))
+    console.log('latest-claim', data)
+
+    const { usdt, mud, reward_ids } = data
+    const mud_min = parseInt(mud / 10)
+    data = decodeReply(await client.post('/sign-claim', { address: owner.address, usdt, mud_min, reward_ids }))
+    console.log('sign-claim', data)
+  }
+  return
 
   // 部署合约
   const pool = (await provider.getCode(poolAddress)).length > 2 ? new ethers.Contract(poolAddress, poolAbi, owner) : await deploy(owner, poolAbi, poolBytecode)
@@ -119,32 +130,43 @@ const main = async () => {
 
   // 质押之前，用户要给delaney合约授权扣除用户的mud
   {
-    const allowance = await mud.allowance(delegator.address, delaney.target)
+    let allowance = await mud.allowance(delegator.address, delaney.target)
     if (allowance == 0n) {
       const amount = 1000000000 * 1000000
 
       const tx = await mud.connect(delegator).approve(delaney.target, amount)
       await tx.wait()
     }
+
+    allowance = await mud.allowance(owner.address, delaney.target)
+    if (allowance == 0n) {
+      const amount = 1000000000 * 1000000
+
+      const tx = await mud.connect(owner).approve(delaney.target, amount)
+      await tx.wait()
+    }
   }
 
   // 用户跟链交互进行质押
   if (true) {
-    // 发送交易
-    const mud = 1000 * 1000000
-    const min_usdt = 1 * 1000000
-    const tx = await delaney.connect(delegator).delegate(mud, min_usdt, deadline)
+    const deletagors = [delegator, owner]
+    for (const delegator of deletagors) {
+      // 发送交易
+      const mud = 1000 * 1000000
+      const min_usdt = 1 * 1000000
+      const tx = await delaney.connect(delegator).delegate(mud, min_usdt, deadline)
 
-    // 后台记录质押信息
-    data = decodeReply(await client.post('/delegate', { address: delegator.address, mud, hash: tx.hash, min_usdt }))
-    console.log('delegate', data)
+      // 后台记录质押信息
+      data = decodeReply(await client.post('/delegate', { address: delegator.address, mud, hash: tx.hash, min_usdt }))
+      console.log('delegate', data)
 
-    // 等待交易上链
-    await tx.wait()
+      // 等待交易上链
+      await tx.wait()
 
-    // 给后台确认质押金额
-    data = decodeReply(await client.post('/confirm-delegate', { hash: tx.hash }))
-    console.log('confirm delegate', data)
+      // 给后台确认质押金额
+      data = decodeReply(await client.post('/confirm-delegate', { hash: tx.hash }))
+      console.log('confirm delegate', data)
+    }
   }
 
   // 用户获取最新的奖励信息
