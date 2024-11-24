@@ -152,6 +152,7 @@ const main = async () => {
     data = decodeReply(await client.get(`/latest-claim?address=${delegator.address}`))
     console.log('latest-claim', data)
 
+    return
     // 生成签名
     const { usdt, mud, reward_ids } = data
     data = decodeReply(await client.post('/sign-claim', { address: delegator.address, usdt: usdt, mud_min: mud, reward_ids: reward_ids, deadline: deadline }))
@@ -170,7 +171,7 @@ const main = async () => {
 }
 
 main()
-  .then(() => { })
+  .then(() => {})
   .catch((err) => {
     console.log(err)
   })

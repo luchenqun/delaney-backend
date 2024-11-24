@@ -22,6 +22,10 @@ export const RewardTypeTeam = 1
 export const RewardPersonKey = 'person_reward_level'
 export const RewardTeamKey = 'team_reward_level'
 
+export const RewardUnclaimed = 0
+export const RewardClaiming = 1
+export const RewardClaimed = 2
+
 export const MessageTypeCreateUser = 0
 export const MessageTypeDelegate = 1
 export const MessageTypeConfirmDelegate = 2
@@ -35,3 +39,5 @@ export const MessageTypeTeamReward = 8
 export const ClaimStatusReceiving = 0
 export const ClaimStatusReceived = 1
 export const ClaimStatusReceiveFailed = 2
+
+export const TokenWei = 1000000
