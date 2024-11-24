@@ -332,8 +332,10 @@ export default async function (fastify, opts) {
     const from = receipt.from.toLowerCase()
 
     // 处理交易失败
+    let [mud, min_usdt, _] = txDescription.args
+    mud = parseInt(mud)
+    min_usdt = parseInt(min_usdt)
     if (receipt.status == ReceiptFail) {
-      const [mud, min_usdt, _] = txDescription.args
       const info = db.prepare('INSERT OR REPLACE INTO delegate (address, mud, min_usdt, hash, status) VALUES (?, ?, ?, ?, ?)').run(from, mud, min_usdt, hash, DelegateStatusFail)
       console.log(info)
       return {
@@ -385,8 +387,7 @@ export default async function (fastify, opts) {
     //     uint unlockTime; // 解锁时间
     //     bool withdrew;
     // }
-    let { mud, usdt, periodDuration, periodNum, unlockTime, withdrew } = (await delaney.delegations(cid)).toObject(true)
-    mud = parseInt(mud)
+    let { usdt, periodDuration, periodNum, unlockTime, withdrew } = (await delaney.delegations(cid)).toObject(true)
     usdt = parseInt(usdt)
     const period_duration = parseInt(periodDuration)
     const period_num = parseInt(periodNum)
@@ -440,6 +441,11 @@ export default async function (fastify, opts) {
         'INSERT OR REPLACE INTO delegate (cid, address, mud, min_usdt, usdt, hash, period_duration, period_num, period_reward_ratio, status, unlock_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).run(cid, from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time)
 
+      // 上面查询delegate可能还没有
+      if (!delegate) {
+        delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
+      }
+
       // 自己信息更新：自己质押的mud/usdt更新，状态更新
       db.prepare('UPDATE user SET mud = ?, usdt = ? WHERE address = ?').run(self.mud + mud, self.usdt + usdt, self.address)
 
@@ -491,9 +497,15 @@ export default async function (fastify, opts) {
       // 分发静态奖励即质押生息
       for (let i = 0; i < period_num; i++) {
         const period = i + 1
-        const unlock_time = unlock_time - period_duration * (period_num - period)
+        const reward_unlock_time = unlock_time - period_duration * (period_num - period)
         const reward_usdt = parseInt((config['period_reward_ratio'] * usdt) / 100)
-        db.prepare('INSERT INTO static_reward (delegate_id, period, address, usdt, unlock_time) VALUES (?, ?, ?, ?, ?)').run(delegate.id, period, from, reward_usdt, unlock_time)
+        db.prepare('INSERT INTO static_reward (delegate_id, period, address, usdt, unlock_time) VALUES (?, ?, ?, ?, ?)').run(
+          delegate.id,
+          period,
+          from,
+          reward_usdt,
+          reward_unlock_time
+        )
       }
 
       // 上级用户信息更新：团队星级，直推以及团队的mud/usdt的更新
