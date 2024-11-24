@@ -885,7 +885,7 @@ export default async function (fastify, opts) {
 
   // 用户获取领取奖励的签名
   // https://coinsbench.com/how-to-sign-a-message-with-ethers-js-v6-and-then-validate-it-in-solidity-89cd4f172dfd
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "usdt":0, "mud_min":0, "reward_ids": {"dynamics":[1, 2, 6], "statics":[2, 8]}}' http://127.0.0.1:3000/sign-claim
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "usdt":0, "mud_min":0, "reward_ids": {"dynamic_ids":[1, 2, 6], "static_ids":[2, 8]}}' http://127.0.0.1:3000/sign-claim
   fastify.post('/sign-claim', async function (request, reply) {
     const { db } = fastify
     let { address, usdt, mud_min, reward_ids } = request.body
@@ -904,8 +904,8 @@ export default async function (fastify, opts) {
     // 根据address去数据库查询数据，是否有待领取的列表
     // 如果是未领取，但是超过deadline，而且在链上已经确认没有领取，重新去签名一个奖励
 
-    // rewardIds 是用户去领取了哪些奖励id，比如 "{dynamics:[1,5,6], statics:[1,8,9]}"
-    // TODO: 检查 rewardIds 对应的 usdt 之和 是否等于用户传进来的usdt的数值
+    // reward_ids 是用户去领取了哪些奖励id，比如 "{dynamic_ids:[1,5,6], static_ids:[1,8,9]}"
+    // TODO: 检查 reward_ids 对应的 usdt 之和 是否等于用户传进来的usdt的数值
     let total_usdt = 0
     const { static_ids, dynamic_ids } = reward_ids
 
@@ -946,6 +946,15 @@ export default async function (fastify, opts) {
     const signature = await signer.signMessage(digestBytes)
 
     // TODO: 将数据写入数据库
+    db.prepare('INSERT INTO claim (address, usdt, min_mud, rewardIds, status, signature, deadline) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      address,
+      usdt,
+      mud_min,
+      JSON.stringify(reward_ids),
+      ClaimStatusReceiving,
+      signature,
+      deadline
+    )
 
     reply.send({
       code: 0,
@@ -955,12 +964,34 @@ export default async function (fastify, opts) {
   })
 
   // 发起领取奖励拿到交易哈希之后， 将奖励信息写入数据库
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "usdt":0, "mud_min":0, "reward_ids": {"dynamics":[1, 2, 6], "statics":[2, 8]}, "hash":""}' http://127.0.0.1:3000/claim
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "usdt":0, "mud_min":0, "reward_ids": {"dynamic_ids":[1, 2, 6], "static_ids":[2, 8]}, "hash":""}' http://127.0.0.1:3000/claim
   fastify.post('/claim', async function (request, reply) {
     const { db } = fastify
     let { address, usdt, mud_min, reward_ids, hash } = request.query
+    const { static_ids, dynamic_ids } = reward_ids
+    const transaction = db.transaction(() => {
+      const { id } = db.prepare('SELECT id FROM claim WHERE address = ? AND usdt = ? AND min_mud = ? AND rewardIds = ?').get(address, usdt, mud_min, JSON.stringify(reward_ids))
 
-    db.prepare('INSERT INTO claim (address, usdt, min_mud, rewardIds, hash, status) VALUES (?, ?, ?, ?, ?, ?)').run(address, usdt, min_mud, reward_ids, hash, ClaimStatusReceiving)
+      let placeholders = static_ids.map(() => '?').join(', ')
+      db.prepare(`UPDATE static_reward SET claim_id = ?, hash = ?, status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(
+        id,
+        hash,
+        RewardClaiming,
+        address,
+        static_ids
+      )
+
+      placeholders = dynamic_ids.map(() => '?').join(', ')
+      db.prepare(`UPDATE dynamic_reward SET claim_id = ?, hash = ?, status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(
+        id,
+        hash,
+        RewardClaiming,
+        address,
+        dynamic_ids
+      )
+      db.prepare('UPDATE claim SET hash = ? WHERE address = ? AND usdt = ? AND mud_min = ? AND rewardIds = ?').run(hash, address, usdt, mud_min, JSON.stringify(reward_ids))
+    })
+    transaction()
 
     const claim = db.prepare('SELECT * FROM claim WHERE hash = ?').get(hash)
     return {
@@ -1050,33 +1081,24 @@ export default async function (fastify, opts) {
 
     const from = receipt.from.toLowerCase()
     const cid = logArgs[1]
-    const rewardIds = logArgs[4]
-    const signature = logArgs[5]
+
     console.log({ id: cid })
 
-    let { delegator, minMud, usdt, deadline } = (await delaney.claimants(cid)).toObject(true)
-    db.prepare('UPDATE claim SET cid = ？, deadline = ？, status = ?, signature = ? WHERE hash = ?').run(cid, deadline, ClaimStatusReceived, signature, hash)
+    let { delegator, minMud, usdt, rewardIds, deadline } = (await delaney.claimants(cid)).toObject(true)
 
-    let obj = JSON.parse(rewardIds)
-    const { statics, dynamics } = obj
+    const transaction = db.transaction(() => {
+      db.prepare('UPDATE claim SET cid = ？, status = ? WHERE hash = ?').run(cid, ClaimStatusReceived, hash)
 
-    let placeholders = statics.map(() => '?').join(', ')
-    db.prepare(`UPDATE static_reward SET claim_id = ?, hash = ?, status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(
-      cid,
-      hash,
-      ClaimStatusReceived,
-      address,
-      statics
-    )
+      let obj = JSON.parse(rewardIds)
+      const { static_ids, dynamic_ids } = obj
 
-    placeholders = dynamics.map(() => '?').join(', ')
-    db.prepare(`UPDATE dynamic_reward SET claim_id = ?, hash = ?, status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(
-      cid,
-      hash,
-      ClaimStatusReceived,
-      address,
-      dynamics
-    )
+      let placeholders = static_ids.map(() => '?').join(', ')
+      db.prepare(`UPDATE static_reward SET status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(ClaimStatusReceived, address, static_ids)
+
+      placeholders = dynamic_ids.map(() => '?').join(', ')
+      db.prepare(`UPDATE dynamic_reward SET status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(ClaimStatusReceived, address, dynamic_ids)
+    })
+    transaction()
 
     const claim = db.prepare('SELECT * FROM claim WHERE hash = ?').get(hash)
 
