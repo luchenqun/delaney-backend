@@ -843,7 +843,7 @@ export default async function (fastify, opts) {
       data: {
         usdt: tatal_usdt,
         mud,
-        reward_ids: { dynamics: dynamic_reward_ids, statics: static_reward_ids }
+        reward_ids: { dynamic_ids: dynamic_reward_ids, static_ids: static_reward_ids }
       }
     }
   })
@@ -865,25 +865,29 @@ export default async function (fastify, opts) {
       }
     }
 
+    // TODO
+    // 根据address去数据库查询数据，是否有待领取的列表
+    // 如果是未领取，但是超过deadline，而且在链上已经确认没有领取，重新去签名一个奖励
+
     // rewardIds 是用户去领取了哪些奖励id，比如 "{dynamics:[1,5,6], statics:[1,8,9]}"
     // TODO: 检查 rewardIds 对应的 usdt 之和 是否等于用户传进来的usdt的数值
     let total_usdt = 0
-    const { statics, dynamics } = reward_ids
+    const { static_ids, dynamic_ids } = reward_ids
 
-    if (Array.isArray(statics)) {
+    if (Array.isArray(static_ids)) {
       const dynamic_rewards = db
-        .prepare(`SELECT usdt FROM static_reward WHERE address = ? AND status = ? AND id IN (${statics.map(() => '?').join(',')})`)
-        .all([address, RewardUnclaimed, ...statics])
+        .prepare(`SELECT usdt FROM static_reward WHERE address = ? AND status = ? AND id IN (${static_ids.map(() => '?').join(',')})`)
+        .all([address, RewardUnclaimed, ...static_ids])
       for (const reward of dynamic_rewards) {
         const { usdt } = reward
         total_usdt += usdt
       }
     }
 
-    if (Array.isArray(dynamics)) {
+    if (Array.isArray(dynamic_ids)) {
       const dynamic_rewards = db
-        .prepare(`SELECT usdt FROM dynamic_reward WHERE address = ? AND status = ? AND id IN (${dynamics.map(() => '?').join(',')})`)
-        .all([address, RewardUnclaimed, ...dynamics])
+        .prepare(`SELECT usdt FROM dynamic_reward WHERE address = ? AND status = ? AND id IN (${dynamic_ids.map(() => '?').join(',')})`)
+        .all([address, RewardUnclaimed, ...dynamic_ids])
       for (const reward of dynamic_rewards) {
         const { usdt } = reward
         total_usdt += usdt
@@ -906,10 +910,12 @@ export default async function (fastify, opts) {
 
     const signature = await signer.signMessage(digestBytes)
 
+    // TODO: 将数据写入数据库
+
     reply.send({
       code: 0,
       msg: '',
-      data: { address, usdt, mud_min, reward_ids: JSON.stringify(reward_ids), signature }
+      data: { address, usdt, mud_min, reward_ids: JSON.stringify(reward_ids), signature, deadline }
     })
   })
 
