@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url'
 import { fastifySchedulePlugin } from '@fastify/schedule'
 import { SimpleIntervalJob, AsyncTask } from 'toad-scheduler'
 import Database from 'better-sqlite3'
+import { delaney } from './utils/index.js'
 import fs from 'fs'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -62,6 +63,23 @@ export default async function (fastify, opts) {
       db.exec(sqliteCreateTableFile)
 
       fastify.scheduler.addSimpleIntervalJob(job)
+
+      delaney.on('Delegate', (...args) => {
+        const [delegator, id, mud, usdt, unlock_time, event] = args
+        const hash = event.log.transactionHash
+        console.log('Delegate', { delegator, id, mud, usdt, unlock_time, hash })
+      })
+      delaney.on('Claim', (...args) => {
+        const [delegator, id, usdt, mud, signature, event] = args
+        const hash = event.log.transactionHash
+        console.log('Claim', { delegator, id, usdt, mud, signature, hash })
+      })
+      delaney.on('Undelegate', (...args) => {
+        const [delegator, id, usdt, mud, event] = args
+        const hash = event.log.transactionHash
+        console.log('Undelegate', { delegator, id, usdt, mud, hash })
+      })
+
       console.log('successfully booted!')
     },
     (err) => {
