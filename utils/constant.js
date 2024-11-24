@@ -41,3 +41,4 @@ export const ClaimStatusReceived = 1
 export const ClaimStatusReceiveFailed = 2
 
 export const TokenWei = 1000000
+export const ReceiptFail = 0

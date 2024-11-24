@@ -1,5 +1,5 @@
 import { mudPrice, pageSql } from '../utils/index.js'
-import { ErrorInputCode, ErrorInputMsg, ErrorDataNotExistCode, ErrorDataNotExistMsg, ErrorBusinessCode, ErrorBusinessMsg, TokenWei } from '../utils/constant.js'
+import { ErrorInputCode, ErrorInputMsg, ErrorDataNotExistCode, ErrorDataNotExistMsg, ErrorBusinessCode, ErrorBusinessMsg, TokenWei, ReceiptFail } from '../utils/constant.js'
 import { DelegateStatusDelegating, DelegateStatusSuccess, DelegateStatusFail, DelegateStatusUndelegating, DelegateStatusWithdrew } from '../utils/constant.js'
 import {
   RewardMaxDepth,
@@ -290,6 +290,28 @@ export default async function (fastify, opts) {
       }
     }
 
+    // 确保交易存在
+    const tx = await provider.getTransaction(hash)
+    if (!tx) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'tx is not exist',
+        data: {}
+      }
+    }
+
+    // 确保交易是delegate
+    const txDescription = delaney.interface.parseTransaction(tx)
+    if (!(txDescription && txDescription.name === 'delegate')) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'tx is not call contract delaney function delegate',
+        data: {}
+      }
+    }
+    console.log(txDescription)
+
+    // 确保交易已经上链
     const receipt = await provider.getTransactionReceipt(hash)
     if (!receipt) {
       return {
@@ -299,18 +321,20 @@ export default async function (fastify, opts) {
       }
     }
 
-    // to 要等于我们的合约是为了防止别人搞个假事件作弊
+    // 确保调用的就是 delaney 合约
     if (receipt.to.toLowerCase() !== delaneyAddress.toLowerCase()) {
       return {
         code: ErrorBusinessCode,
-        msg: 'unknow error',
+        msg: 'tx is not call contract delaney',
         data: {}
       }
     }
+    const from = receipt.from.toLowerCase()
 
     // 处理交易失败
-    if (receipt.status == 0) {
-      const info = db.prepare('UPDATE delegate SET status = ? WHERE hash = ?').run(DelegateStatusFail, hash)
+    if (receipt.status == ReceiptFail) {
+      const [mud, min_usdt, _] = txDescription.args
+      const info = db.prepare('INSERT OR REPLACE INTO delegate (address, mud, min_usdt, hash, status) VALUES (?, ?, ?, ?, ?)').run(from, mud, min_usdt, hash, DelegateStatusFail)
       console.log(info)
       return {
         code: ErrorBusinessCode,
@@ -318,9 +342,6 @@ export default async function (fastify, opts) {
         data: {}
       }
     }
-
-    // const tx = await provider.getTransaction(hash)
-    // const txDescription = delaney.interface.parseTransaction(tx)
 
     // 能不能找到Delegate事件
     const logs = receipt.logs || []
@@ -343,17 +364,35 @@ export default async function (fastify, opts) {
       }
     }
 
-    const from = receipt.from.toLowerCase()
-    const cid = logArgs[1]
-    // TODO 根据id去合约查询delegate的状态，要确认没有取消质押
-    console.log({ id: cid })
+    // 合约相关事件
+    // event Delegate(
+    //     address indexed delegator,
+    //     uint256 id,
+    //     uint256 mud,
+    //     uint256 usdt,
+    //     uint256 unlockTime
+    // );
+    const cid = logArgs[1] // 合约里面的质押的cid，见上面事件
+    // 根据id去合约查询delegate的状态，要确认没有取消质押
+    // struct Delegation {
+    //     uint id;
+    //     address delegator;
+    //     uint mud; // 每次质押数量
+    //     uint usdt; // 数量对应usdt的价值
+    //     uint backMud; // 取消质押返回对应的mud
+    //     uint period_duration;
+    //     uint period_num;
+    //     uint unlockTime; // 解锁时间
+    //     bool withdrew;
+    // }
     let { mud, usdt, periodDuration, periodNum, unlockTime, withdrew } = (await delaney.delegations(cid)).toObject(true)
     mud = parseInt(mud)
     usdt = parseInt(usdt)
-    periodDuration = parseInt(periodDuration)
-    periodNum = parseInt(periodNum)
-    unlockTime = parseInt(unlockTime)
+    const period_duration = parseInt(periodDuration)
+    const period_num = parseInt(periodNum)
+    const unlock_time = parseInt(unlockTime)
 
+    // 如果已经取消质押了，那么不再分发奖励
     if (withdrew) {
       return {
         code: ErrorBusinessCode,
@@ -365,10 +404,10 @@ export default async function (fastify, opts) {
     let delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
 
     // 考虑重复确认的问题
-    if (delegate.status !== DelegateStatusDelegating) {
+    if (delegate && delegate.status !== DelegateStatusDelegating) {
       return {
         code: ErrorBusinessCode,
-        msg: 'you have confirmed',
+        msg: 'you delegate status is ' + delegate.status,
         data: {}
       }
     }
@@ -395,16 +434,12 @@ export default async function (fastify, opts) {
 
     const transaction = db.transaction(() => {
       // 质押信息更新
-      db.prepare('UPDATE delegate SET cid = ?, usdt = ?, period_duration = ?, period_num = ?, period_reward_ratio = ?, status = ?, unlock_time = ? WHERE hash = ?').run(
-        cid,
-        usdt,
-        periodDuration,
-        periodNum,
-        config['period_reward_ratio'],
-        DelegateStatusSuccess,
-        unlockTime,
-        hash
-      )
+      // INSERT 用户直接与合约进行交互的情况
+      // REPLACE 用户与DAPP进行交互
+      db.prepare(
+        'INSERT OR REPLACE INTO delegate (cid, address, mud, min_usdt, usdt, hash, period_duration, period_num, period_reward_ratio, status, unlock_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(cid, from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time)
+
       // 自己信息更新：自己质押的mud/usdt更新，状态更新
       db.prepare('UPDATE user SET mud = ?, usdt = ? WHERE address = ?').run(self.mud + mud, self.usdt + usdt, self.address)
 
@@ -426,20 +461,20 @@ export default async function (fastify, opts) {
       }
 
       // 分发动态奖励中的团队奖励
-      let preStar = 0 // 上个星级
-      let preRaito = 0 // 上个星级的奖励
+      let pre_star = 0 // 上个星级
+      let pre_raito = 0 // 上个星级的奖励
       for (let i = 0; i < parents.length; i++) {
         const user = parents[i]
         // 个人投资额度需要大于某个数才能获取团队奖励
         // TODO 测试阶段直接分发
         const star = user.star > user.min_star ? user.star : user.min_star // 管理员可以直接更新星级
-        if ((star > preStar && user.usdt >= config['team_reward_min_usdt']) || true) {
-          const curRatio = config[RewardTeamKey + star] // 每个星级奖励多少
-          const teamRatio = curRatio - preRaito // 需要扣除给手下的，实际奖励多少
-          const rewardUsdt = parseInt((teamRatio * usdt) / 100)
-          db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, rewardUsdt, RewardTypeTeam)
-          preStar = star
-          preRaito = curRatio
+        if ((star > pre_star && user.usdt >= config['team_reward_min_usdt']) || true) {
+          const cur_ratio = config[RewardTeamKey + star] // 每个星级奖励多少
+          const team_ratio = cur_ratio - pre_raito // 需要扣除给手下的，实际奖励多少
+          const reward_usdt = parseInt((team_ratio * usdt) / 100)
+          db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, reward_usdt, RewardTypeTeam)
+          pre_star = star
+          pre_raito = cur_ratio
         }
 
         // 迭代到五星了
@@ -454,11 +489,11 @@ export default async function (fastify, opts) {
       }
 
       // 分发静态奖励即质押生息
-      for (let i = 0; i < periodNum; i++) {
+      for (let i = 0; i < period_num; i++) {
         const period = i + 1
-        const unlock_time = unlockTime - periodDuration * (periodNum - period)
-        const rewardUsdt = parseInt((config['period_reward_ratio'] * usdt) / 100)
-        db.prepare('INSERT INTO static_reward (delegate_id, period, address, usdt, unlock_time) VALUES (?, ?, ?, ?, ?)').run(delegate.id, period, from, rewardUsdt, unlock_time)
+        const unlock_time = unlock_time - period_duration * (period_num - period)
+        const reward_usdt = parseInt((config['period_reward_ratio'] * usdt) / 100)
+        db.prepare('INSERT INTO static_reward (delegate_id, period, address, usdt, unlock_time) VALUES (?, ?, ?, ?, ?)').run(delegate.id, period, from, reward_usdt, unlock_time)
       }
 
       // 上级用户信息更新：团队星级，直推以及团队的mud/usdt的更新
@@ -1104,25 +1139,30 @@ export default async function (fastify, opts) {
   // curl -X POST -H "Content-Type: application/json" -d '{}' http://127.0.0.1:3000/db-test
   fastify.post('/db-test', async function (request, reply) {
     const { db } = fastify
-    const star = 5
+    // const star = 5
+    // const address = '0x55555d6c72886e5500a9410ca15d08a16011ed95'
+    // let user
+    // const transaction = db.transaction((num) => {
+    //   console.log(num)
+    //   user = db.prepare('SELECT star FROM user WHERE address = ?').get(address)
+    //   console.log(1, { user })
+    //   db.prepare('UPDATE user SET min_star = ?, star = ? WHERE address = ?').run(star, star, address)
+    //   user = db.prepare('SELECT star FROM user WHERE address = ?').get(address)
+    //   console.log(2, { user })
+    // })
+
+    // user = db.prepare('SELECT star FROM user WHERE address = ?').get(address)
+    // console.log(0, { user })
+
+    // transaction(123)
+
+    // user = db.prepare('SELECT star FROM user WHERE address = ?').get(address)
+    // console.log(3, { user })
+
+    const hash = '0x88888a4b7ee4cb6351cf1a1eeb9af84284ebb3a0e6818e77bc66ac4634a8ff0a'
     const address = '0x55555d6c72886e5500a9410ca15d08a16011ed95'
-    let user
-    const transaction = db.transaction((num) => {
-      console.log(num)
-      user = db.prepare('SELECT star FROM user WHERE address = ?').get(address)
-      console.log(1, { user })
-      db.prepare('UPDATE user SET min_star = ?, star = ? WHERE address = ?').run(star, star, address)
-      user = db.prepare('SELECT star FROM user WHERE address = ?').get(address)
-      console.log(2, { user })
-    })
-
-    user = db.prepare('SELECT star FROM user WHERE address = ?').get(address)
-    console.log(0, { user })
-
-    transaction(123)
-
-    user = db.prepare('SELECT star FROM user WHERE address = ?').get(address)
-    console.log(3, { user })
+    const info = db.prepare('INSERT OR REPLACE INTO delegate (address, status, hash) VALUES (?, ?, ?)').run(address, 8, hash)
+    console.log(info)
 
     reply.send({
       code: 0,
