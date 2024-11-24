@@ -850,13 +850,15 @@ export default async function (fastify, opts) {
 
   // 用户获取领取奖励的签名
   // https://coinsbench.com/how-to-sign-a-message-with-ethers-js-v6-and-then-validate-it-in-solidity-89cd4f172dfd
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "usdt":0, "mud_min":0, "reward_ids": {"dynamic_ids":[1, 2, 6], "static_ids":[2, 8]}}' http://127.0.0.1:3000/sign-claim
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x00000be6819f41400225702d32d3dd23663dd690", "usdt":21012100, "mud_min":9999904, "reward_ids": "{\"dynamic_ids\":[5,10],\"static_ids\":[]}"}' http://127.0.0.1:3000/sign-claim
   fastify.post('/sign-claim', async function (request, reply) {
     const { db } = fastify
     let { address, usdt, mud_min, reward_ids } = request.body
+    console.log(request.body)
     address = address.toLowerCase()
 
     const deadline = parseInt(new Date().getTime() / 1000) + 10 * 60 // 十分钟内需要上链
+
     if (!address || !usdt || mud_min == undefined || !reward_ids) {
       return {
         code: ErrorInputCode,
@@ -894,13 +896,13 @@ export default async function (fastify, opts) {
       }
     }
 
-    if (total_usdt !== usdt) {
-      return {
-        code: ErrorBusinessCode,
-        msg: 'input parameter usdt verification failed',
-        data: {}
-      }
-    }
+    // if (total_usdt !== usdt) {
+    //   return {
+    //     code: ErrorBusinessCode,
+    //     msg: 'input parameter usdt verification failed',
+    //     data: {}
+    //   }
+    // }
 
     const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
     const signer = new Wallet(privateKey)
@@ -924,7 +926,7 @@ export default async function (fastify, opts) {
     reply.send({
       code: 0,
       msg: '',
-      data: { address, usdt, mud_min, reward_ids: JSON.stringify(reward_ids), signature, deadline }
+      data: { address, usdt, mud_min, reward_ids, signature, deadline }
     })
   })
 
@@ -932,29 +934,36 @@ export default async function (fastify, opts) {
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "usdt":0, "mud_min":0, "reward_ids": {"dynamic_ids":[1, 2, 6], "static_ids":[2, 8]}, "hash":""}' http://127.0.0.1:3000/claim
   fastify.post('/claim', async function (request, reply) {
     const { db } = fastify
-    let { address, usdt, mud_min, reward_ids, hash } = request.query
+    let { address, reward_ids, hash, signature } = request.body
+
     const { static_ids, dynamic_ids } = reward_ids
     const transaction = db.transaction(() => {
-      const { id } = db.prepare('SELECT id FROM claim WHERE address = ? AND usdt = ? AND min_mud = ? AND rewardIds = ?').get(address, usdt, mud_min, JSON.stringify(reward_ids))
+      const claim = db.prepare('SELECT * FROM claim WHERE address = ? AND signature = ?').get(address, signature)
+      const { id } = claim
 
-      let placeholders = static_ids.map(() => '?').join(', ')
-      db.prepare(`UPDATE static_reward SET claim_id = ?, hash = ?, status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(
-        id,
-        hash,
-        RewardClaiming,
-        address,
-        static_ids
-      )
+      if (Array.isArray(static_ids) && static_ids.length > 0) {
+        let placeholders = static_ids.map(() => '?').join(', ')
+        db.prepare(`UPDATE static_reward SET claim_id = ?, hash = ?, status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(
+          id,
+          hash,
+          RewardClaiming,
+          address,
+          ...static_ids
+        )
+      }
+      if (Array.isArray(dynamic_ids) && dynamic_ids.length > 0) {
+        let placeholders = dynamic_ids.map(() => '?').join(', ')
+        console.log('dynamic', placeholders)
+        db.prepare(`UPDATE dynamic_reward SET claim_id = ?,hash = ?, status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(
+          id,
+          hash,
+          RewardClaiming,
+          address,
+          ...dynamic_ids
+        )
+      }
 
-      placeholders = dynamic_ids.map(() => '?').join(', ')
-      db.prepare(`UPDATE dynamic_reward SET claim_id = ?, hash = ?, status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(
-        id,
-        hash,
-        RewardClaiming,
-        address,
-        dynamic_ids
-      )
-      db.prepare('UPDATE claim SET hash = ? WHERE address = ? AND usdt = ? AND mud_min = ? AND rewardIds = ?').run(hash, address, usdt, mud_min, JSON.stringify(reward_ids))
+      db.prepare('UPDATE claim SET hash = ? WHERE id = ? AND signature = ?').run(hash, id, signature)
     })
     transaction()
 
@@ -995,6 +1004,7 @@ export default async function (fastify, opts) {
     const { db } = fastify
     let { hash } = request.query
 
+    //hash 去链上校验
     const receipt = await provider.getTransactionReceipt(hash)
     if (!receipt) {
       return {

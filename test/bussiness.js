@@ -170,16 +170,19 @@ const main = async () => {
 
     const { usdt, mud, reward_ids } = data
     const mud_min = parseInt(mud / 10)
-    data = decodeReply(await client.post('/sign-claim', { address: owner.address, usdt, mud_min, reward_ids }))
+    data = decodeReply(await client.post('/sign-claim', { address: delegator.address, usdt: usdt, mud_min: mud_min, reward_ids: reward_ids }))
     console.log('sign-claim', data)
-
     return
 
-    const { signature } = data
-    const tx = await delaney.connect(delegator).claim(min_usdt, mud, reward_ids, signature, deadline)
+    const { signature, deadline } = data
+    const tx = await delaney.connect(delegator).claim(usdt, mud, JSON.stringify(reward_ids), signature, deadline)
+    console.log('call contract claim', tx.hash)
+
     // 领取奖励
+    console.log('claim request params', reward_ids)
     data = decodeReply(await client.post('/claim', { address: delegator.address, usdt: usdt, mud_min: mud, reward_ids: reward_ids, hash: tx.hash }))
     console.log('claim', data)
+
 
     // 确认领取
     data = decodeReply(await client.post(`/confirm-claim?hash=${tx.hash}`))
