@@ -129,20 +129,15 @@ const main = async () => {
 
   // 质押之前，用户要给delaney合约授权扣除用户的mud
   {
-    let allowance = await mud.allowance(delegator.address, delaney.target)
-    if (allowance == 0n) {
-      const amount = 1000000000 * 1000000
+    const deletagors = [delegator, owner]
+    for (const delegator of deletagors) {
+      let allowance = await mud.allowance(delegator.address, delaney.target)
+      if (allowance == 0n) {
+        const amount = 1000000000 * 1000000
 
-      const tx = await mud.connect(delegator).approve(delaney.target, amount)
-      await tx.wait()
-    }
-
-    allowance = await mud.allowance(owner.address, delaney.target)
-    if (allowance == 0n) {
-      const amount = 1000000000 * 1000000
-
-      const tx = await mud.connect(owner).approve(delaney.target, amount)
-      await tx.wait()
+        const tx = await mud.connect(delegator).approve(delaney.target, amount)
+        await tx.wait()
+      }
     }
   }
 
