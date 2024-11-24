@@ -960,7 +960,7 @@ export default async function (fastify, opts) {
     const signature = await signer.signMessage(digestBytes)
 
     // TODO: 将数据写入数据库
-    db.prepare('INSERT INTO claim (address, usdt, min_mud, rewardIds, status, signature, deadline) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+    db.prepare('INSERT INTO claim (address, usdt, min_mud, reward_ids, status, signature, deadline) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
       address,
       usdt,
       mud_min,
