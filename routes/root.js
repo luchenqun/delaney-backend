@@ -248,7 +248,7 @@ export default async function (fastify, opts) {
   // 用户质押信息
   // http://127.0.0.1:3000/delegate?hash=0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156
   fastify.get('/delegate', function (request, reply) {
-    let { hash } = request.body
+    let { hash } = request.query
     const { db } = fastify
     console.log({ hash })
 
@@ -323,13 +323,18 @@ export default async function (fastify, opts) {
 
     const from = receipt.from.toLowerCase()
 
+    let delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
+
     // 处理交易失败
     let [mud, min_usdt, _] = txDescription.args
     mud = parseInt(mud)
     min_usdt = parseInt(min_usdt)
     if (receipt.status == ReceiptFail) {
-      const info = db.prepare('INSERT OR REPLACE INTO delegate (address, mud, min_usdt, hash, status) VALUES (?, ?, ?, ?, ?)').run(from, mud, min_usdt, hash, DelegateStatusFail)
-      console.log(info)
+      if (delegate) {
+        db.prepare('UPDATE delegate SET address = ?, mud = ?, min_usdt = ?, status = ? WHERE hash = ?').run(from, mud, min_usdt, DelegateStatusFail, hash)
+      } else {
+        db.prepare('INSERT INTO delegate (address, mud, min_usdt, hash, status) VALUES (?, ?, ?, ?, ?)').run(from, mud, min_usdt, hash, DelegateStatusFail)
+      }
       return {
         code: ErrorBusinessCode,
         msg: 'delegate failed',
@@ -394,8 +399,6 @@ export default async function (fastify, opts) {
       }
     }
 
-    let delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
-
     // 考虑重复确认的问题
     if (delegate && delegate.status !== DelegateStatusDelegating) {
       return {
@@ -426,12 +429,16 @@ export default async function (fastify, opts) {
     }
 
     const transaction = db.transaction(() => {
-      // 质押信息更新
-      // INSERT 用户直接与合约进行交互的情况
-      // REPLACE 用户与DAPP进行交互
-      db.prepare(
-        'INSERT OR REPLACE INTO delegate (cid, address, mud, min_usdt, usdt, hash, period_duration, period_num, period_reward_ratio, status, unlock_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      ).run(cid, from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time)
+      // 质押信息更新 或者 插入(用户可能直接跟合约进行交互)
+      if (delegate) {
+        db.prepare(
+          'UPDATE delegate SET cid = ?, address = ?, mud = ?, min_usdt = ?, usdt = ?, hash = ?, period_duration = ?, period_num = ?, period_reward_ratio = ?, status = ?, unlock_time = ? WHERE id = ?'
+        ).run(cid, from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time, delegate.id)
+      } else {
+        db.prepare(
+          'INSERT INTO delegate (cid, address, mud, min_usdt, usdt, hash, period_duration, period_num, period_reward_ratio, status, unlock_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        ).run(cid, from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time)
+      }
 
       // 上面查询delegate可能还没有
       if (!delegate) {
@@ -568,6 +575,7 @@ export default async function (fastify, opts) {
     db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(delegate.address, MessageTypeDelegate, '质押', '质押成功')
 
     delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
+
     reply.send({
       code: 0,
       msg: 'success...',
@@ -676,13 +684,10 @@ export default async function (fastify, opts) {
 
     // 根据redelegator依次把所有受影响的账户找出来
     let parents = []
-    let self
     let address = from
     while (address !== ZeroAddress) {
       const user = db.prepare('SELECT * FROM user WHERE address = ?').get(address)
-      if (address == from) {
-        self = user
-      } else {
+      if (address !== from) {
         parents.push(user)
       }
       address = user.parent
@@ -866,7 +871,7 @@ export default async function (fastify, opts) {
     }
 
     // 根据cid去合约查询delegate的信息。因为上面已经确认了是delegate而且交易已经成功了
-    let { mud, usdt, back_mud } = (await delaney.delegations(cid)).toObject(true)
+    let { mud, usdt, backMud: back_mud } = (await delaney.delegations(cid)).toObject(true)
     mud = parseInt(mud)
     usdt = parseInt(usdt)
     back_min_mud = parseInt(back_min_mud)
@@ -911,6 +916,7 @@ export default async function (fastify, opts) {
     }
 
     const transaction = db.transaction(() => {
+      console.log({ back_mud, back_min_mud, hash, cid })
       // 质押信息更新
       db.prepare('UPDATE delegate SET back_mud = ?, back_min_mud = ?, status = ?, undelegate_time = ?, undelegate_hash = ? WHERE cid = ?').run(
         back_mud,
@@ -1385,11 +1391,6 @@ export default async function (fastify, opts) {
 
     // user = db.prepare('SELECT star FROM user WHERE address = ?').get(address)
     // console.log(3, { user })
-
-    const hash = '0x88888a4b7ee4cb6351cf1a1eeb9af84284ebb3a0e6818e77bc66ac4634a8ff0a'
-    const address = '0x55555d6c72886e5500a9410ca15d08a16011ed95'
-    const info = db.prepare('INSERT OR REPLACE INTO delegate (address, status, hash) VALUES (?, ?, ?)').run(address, 8, hash)
-    console.log(info)
 
     reply.send({
       code: 0,
