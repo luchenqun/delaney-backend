@@ -42,7 +42,7 @@ const main = async () => {
   const provider = new ethers.JsonRpcProvider(rpc)
   provider.pollingInterval = 200
 
-  const url = 'http://127.0.0.1:3000'
+  const url = 'https://delaney-api.mud-chain.net' && 'http://127.0.0.1:3000'
   const client = axios.create({
     baseURL: url,
     timeout: 1000
