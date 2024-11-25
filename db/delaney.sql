@@ -68,7 +68,6 @@ VALUES
 CREATE TABLE
   IF NOT EXISTS delegate (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-    parent_id INT NOT NULL DEFAULT -1, -- 如果复投，来自哪个父的委托id
     cid INT NOT NULL DEFAULT -1, -- 合约上面的id，要根据id到期领取本金
     address CHAR(42) NOT NULL,
     mud INT NOT NULL DEFAULT 0,
