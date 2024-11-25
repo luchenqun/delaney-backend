@@ -229,6 +229,37 @@
         "type": "uint256"
       }
     ],
+    "name": "Redelegate",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "delegator",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "usdt",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "mud",
+        "type": "uint256"
+      }
+    ],
     "name": "Undelegate",
     "type": "event"
   },
@@ -263,9 +294,9 @@
         "type": "string"
       },
       {
-        "internalType": "string",
+        "internalType": "bytes",
         "name": "signature",
-        "type": "string"
+        "type": "bytes"
       },
       {
         "internalType": "uint256",
@@ -307,6 +338,11 @@
         "internalType": "uint256",
         "name": "usdt",
         "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "rewardIds",
+        "type": "string"
       },
       {
         "internalType": "uint256",
@@ -545,6 +581,24 @@
       }
     ],
     "name": "profit",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "deadline",
+        "type": "uint256"
+      }
+    ],
+    "name": "redelegate",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"

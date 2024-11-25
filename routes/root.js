@@ -575,6 +575,208 @@ export default async function (fastify, opts) {
     })
   })
 
+  // 用户确认重质押成功
+  // curl -X POST -H "Content-Type: application/json" -d '{"hash": "0x3be4045e7a4ce7bd74bed53537ab702372944d5f1a1753bda1c669cc52e77c47"}' http://127.0.0.1:3000/confirm-redelegate
+  fastify.post('/confirm-redelegate', async function (request, reply) {
+    const { hash } = request.body
+    const { db } = fastify
+    console.log({ hash })
+
+    if (!hash) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'hash',
+        data: {}
+      }
+    }
+
+    // 确保交易已经上链
+    const receipt = await provider.getTransactionReceipt(hash)
+    if (!receipt) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'receipt is not exist',
+        data: {}
+      }
+    }
+
+    // 确保调用的就是 delaney 合约
+    if (receipt.to.toLowerCase() !== delaneyAddress.toLowerCase()) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'tx is not call contract delaney',
+        data: {}
+      }
+    }
+
+    // 确保交易调用的方法就是delegate
+    const tx = await provider.getTransaction(hash)
+    const txDescription = delaney.interface.parseTransaction(tx)
+    // 交易解码不出来，或者解码出来的不是redelegate
+    if (!txDescription || (txDescription && txDescription.name !== 'redelegate')) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'tx is not call contract delaney function redelegate',
+        data: {}
+      }
+    }
+
+    const from = receipt.from.toLowerCase()
+    const [cid, ,] = txDescription.args
+    // 交易失败什么也不需要做
+    if (receipt.status == ReceiptFail) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'redelegate failed',
+        data: {}
+      }
+    }
+
+    let { usdt, periodDuration, periodNum, unlockTime, withdrew } = (await delaney.delegations(cid)).toObject(true)
+    usdt = parseInt(usdt)
+    const period_duration = parseInt(periodDuration)
+    const period_num = parseInt(periodNum)
+    const unlock_time = parseInt(unlockTime)
+
+    // 如果已经取消质押了，那么不再分发奖励
+    if (withdrew) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'you have withdrew',
+        data: {}
+      }
+    }
+
+    let delegate = db.prepare('SELECT * FROM delegate WHERE cid = ?').get(cid)
+    if (!delegate) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'delegate info is not exist in database',
+        data: {}
+      }
+    }
+
+    // 只有该状态才允许重新质押
+    if (delegate.status !== DelegateStatusSuccess) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'you delegate status is ' + delegate.status,
+        data: {}
+      }
+    }
+
+    // 禁止重复领取重新质押奖励
+    if (delegate.unlock_time >= unlock_time) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'you delegate unlock time is great than ' + unlock_time,
+        data: {}
+      }
+    }
+
+    // 根据redelegator依次把所有受影响的账户找出来
+    let parents = []
+    let self
+    let address = from
+    while (address !== ZeroAddress) {
+      const user = db.prepare('SELECT * FROM user WHERE address = ?').get(address)
+      if (address == from) {
+        self = user
+      } else {
+        parents.push(user)
+      }
+      address = user.parent
+    }
+
+    const configs = db.prepare('SELECT * FROM config').all()
+    let config = {}
+    for (const cfg of configs) {
+      config[cfg.key] = cfg.value
+    }
+
+    const transaction = db.transaction(() => {
+      // 质押信息更新
+      db.prepare('UPDATE delegate SET hash = ?, period_duration = ?, period_num = ?, period_reward_ratio = ?, unlock_time = ? WHERE cid = ?').run(
+        hash,
+        period_duration,
+        period_num,
+        config['period_reward_ratio'],
+        unlock_time,
+        cid
+      )
+
+      // 分发动态奖励中的个人奖励
+      if (parents.length > 0) {
+        for (let i = 0; i < RewardMaxDepth; i++) {
+          const user = parents[i]
+          // 个人投资额度需要大于某个数才能获取个人奖励
+          // TODO 测试阶段直接分发
+          if (user.usdt >= config['preson_reward_min_usdt'] || true) {
+            const rewardUsdt = parseInt((config[RewardPersonKey + (i + 1)] * usdt) / 100)
+            db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, rewardUsdt, RewardTypePerson)
+          }
+          // 没5层那就直接退出
+          if (user.parent === ZeroAddress) {
+            break
+          }
+        }
+      }
+
+      // 分发动态奖励中的团队奖励
+      let pre_star = 0 // 上个星级
+      let pre_raito = 0 // 上个星级的奖励
+      for (let i = 0; i < parents.length; i++) {
+        const user = parents[i]
+        // 个人投资额度需要大于某个数才能获取团队奖励
+        // TODO 测试阶段直接分发
+        const star = user.star > user.min_star ? user.star : user.min_star // 管理员可以直接更新星级
+        if ((star > pre_star && user.usdt >= config['team_reward_min_usdt']) || true) {
+          const cur_ratio = config[RewardTeamKey + star] // 每个星级奖励多少
+          const team_ratio = cur_ratio - pre_raito // 需要扣除给手下的，实际奖励多少
+          const reward_usdt = parseInt((team_ratio * usdt) / 100)
+          db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, reward_usdt, RewardTypeTeam)
+          pre_star = star
+          pre_raito = cur_ratio
+        }
+
+        // 迭代到五星了
+        if (star == RewardMaxStar) {
+          break
+        }
+
+        // 没5层那就直接退出
+        if (user.parent === ZeroAddress) {
+          break
+        }
+      }
+
+      // 分发静态奖励即质押生息
+      for (let i = 0; i < period_num; i++) {
+        const period = i + 1
+        const reward_unlock_time = unlock_time - period_duration * (period_num - period)
+        const reward_usdt = parseInt((config['period_reward_ratio'] * usdt) / 100)
+        db.prepare('INSERT INTO static_reward (delegate_id, period, address, usdt, unlock_time) VALUES (?, ?, ?, ?, ?)').run(
+          delegate.id,
+          period,
+          from,
+          reward_usdt,
+          reward_unlock_time
+        )
+      }
+    })
+
+    transaction()
+
+    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(delegate.address, MessageTypeDelegate, '复投', '复投成功')
+
+    delegate = db.prepare('SELECT * FROM delegate WHERE cid = ?').get(cid)
+    reply.send({
+      code: 0,
+      msg: 'success...',
+      data: delegate
+    })
+  })
+
   // 用户取消质押
   // curl -X POST -H "Content-Type: application/json" -d '{"hash": "0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156"}' http://127.0.0.1:3000/undelegate
   fastify.post('/undelegate', function (request, reply) {
@@ -671,7 +873,7 @@ export default async function (fastify, opts) {
     back_mud = parseInt(back_mud)
 
     let delegate = db.prepare('SELECT * FROM delegate WHERE cid = ?').get(cid)
-    if (delegate) {
+    if (!delegate) {
       return {
         code: ErrorBusinessCode,
         msg: 'delegate info is not exist in database',

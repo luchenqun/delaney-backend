@@ -96,6 +96,19 @@ export default async function (fastify, opts) {
         })
       })
 
+      delaney.on('Redelegate', (...args) => {
+        const [delegator, id, usdt, mud, event] = args
+        const hash = event.log.transactionHash
+        console.log('Redelegate log', { delegator, id, usdt, mud, hash })
+        fastify.inject({
+          method: 'POST',
+          url: '/confirm-redelegate',
+          payload: {
+            hash
+          }
+        })
+      })
+
       console.log('successfully booted!')
     },
     (err) => {
