@@ -248,7 +248,7 @@ export default async function (fastify, opts) {
   // 用户质押信息
   // http://127.0.0.1:3000/delegate?hash=0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156
   fastify.get('/delegate', function (request, reply) {
-    let { hash } = request.body
+    let { hash } = request.query
     const { db } = fastify
     console.log({ hash })
 
@@ -323,13 +323,18 @@ export default async function (fastify, opts) {
 
     const from = receipt.from.toLowerCase()
 
+    let delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
+
     // 处理交易失败
     let [mud, min_usdt, _] = txDescription.args
     mud = parseInt(mud)
     min_usdt = parseInt(min_usdt)
     if (receipt.status == ReceiptFail) {
-      const info = db.prepare('INSERT OR REPLACE INTO delegate (address, mud, min_usdt, hash, status) VALUES (?, ?, ?, ?, ?)').run(from, mud, min_usdt, hash, DelegateStatusFail)
-      console.log(info)
+      if (delegate) {
+        db.prepare('UPDATE delegate SET address = ?, mud = ?, min_usdt = ?, status = ? WHERE hash = ?').run(from, mud, min_usdt, DelegateStatusFail, hash)
+      } else {
+        db.prepare('INSERT INTO delegate (address, mud, min_usdt, hash, status) VALUES (?, ?, ?, ?, ?)').run(from, mud, min_usdt, hash, DelegateStatusFail)
+      }
       return {
         code: ErrorBusinessCode,
         msg: 'delegate failed',
@@ -394,8 +399,6 @@ export default async function (fastify, opts) {
       }
     }
 
-    let delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
-
     // 考虑重复确认的问题
     if (delegate && delegate.status !== DelegateStatusDelegating) {
       return {
@@ -426,12 +429,16 @@ export default async function (fastify, opts) {
     }
 
     const transaction = db.transaction(() => {
-      // 质押信息更新
-      // INSERT 用户直接与合约进行交互的情况
-      // REPLACE 用户与DAPP进行交互
-      db.prepare(
-        'INSERT OR REPLACE INTO delegate (cid, address, mud, min_usdt, usdt, hash, period_duration, period_num, period_reward_ratio, status, unlock_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      ).run(cid, from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time)
+      // 质押信息更新 或者 插入(用户可能直接跟合约进行交互)
+      if (delegate) {
+        db.prepare(
+          'UPDATE delegate SET address = ?, mud = ?, min_usdt = ?, usdt = ?, hash = ?, period_duration = ?, period_num = ?, period_reward_ratio = ?, status = ?, unlock_time = ? WHERE id = ?'
+        ).run(from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time, delegate.id)
+      } else {
+        db.prepare(
+          'INSERT INTO delegate (address, mud, min_usdt, usdt, hash, period_duration, period_num, period_reward_ratio, status, unlock_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        ).run(from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time)
+      }
 
       // 上面查询delegate可能还没有
       if (!delegate) {
@@ -568,6 +575,7 @@ export default async function (fastify, opts) {
     db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(delegate.address, MessageTypeDelegate, '质押', '质押成功')
 
     delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
+
     reply.send({
       code: 0,
       msg: 'success...',
