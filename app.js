@@ -67,7 +67,7 @@ export default async function (fastify, opts) {
       delaney.on('Delegate', (...args) => {
         const [delegator, id, mud, usdt, unlock_time, event] = args
         const hash = event.log.transactionHash
-        console.log('-----------> Delegate log', { delegator, id, mud, usdt, unlock_time, hash })
+        console.log('Delegate log', { delegator, id, mud, usdt, unlock_time, hash })
         fastify.inject({
           method: 'POST',
           url: '/confirm-delegate',
@@ -86,7 +86,14 @@ export default async function (fastify, opts) {
       delaney.on('Undelegate', (...args) => {
         const [delegator, id, usdt, mud, event] = args
         const hash = event.log.transactionHash
-        console.log('Undelegate', { delegator, id, usdt, mud, hash })
+        console.log('Undelegate log', { delegator, id, usdt, mud, hash })
+        fastify.inject({
+          method: 'POST',
+          url: '/confirm-undelegate',
+          payload: {
+            hash
+          }
+        })
       })
 
       console.log('successfully booted!')
