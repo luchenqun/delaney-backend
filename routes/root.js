@@ -432,12 +432,12 @@ export default async function (fastify, opts) {
       // 质押信息更新 或者 插入(用户可能直接跟合约进行交互)
       if (delegate) {
         db.prepare(
-          'UPDATE delegate SET address = ?, mud = ?, min_usdt = ?, usdt = ?, hash = ?, period_duration = ?, period_num = ?, period_reward_ratio = ?, status = ?, unlock_time = ? WHERE id = ?'
-        ).run(from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time, delegate.id)
+          'UPDATE delegate SET cid = ?, address = ?, mud = ?, min_usdt = ?, usdt = ?, hash = ?, period_duration = ?, period_num = ?, period_reward_ratio = ?, status = ?, unlock_time = ? WHERE id = ?'
+        ).run(cid, from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time, delegate.id)
       } else {
         db.prepare(
-          'INSERT INTO delegate (address, mud, min_usdt, usdt, hash, period_duration, period_num, period_reward_ratio, status, unlock_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        ).run(from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time)
+          'INSERT INTO delegate (cid, address, mud, min_usdt, usdt, hash, period_duration, period_num, period_reward_ratio, status, unlock_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        ).run(cid, from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time)
       }
 
       // 上面查询delegate可能还没有
@@ -684,13 +684,10 @@ export default async function (fastify, opts) {
 
     // 根据redelegator依次把所有受影响的账户找出来
     let parents = []
-    let self
     let address = from
     while (address !== ZeroAddress) {
       const user = db.prepare('SELECT * FROM user WHERE address = ?').get(address)
-      if (address == from) {
-        self = user
-      } else {
+      if (address !== from) {
         parents.push(user)
       }
       address = user.parent

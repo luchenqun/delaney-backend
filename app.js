@@ -59,7 +59,7 @@ export default async function (fastify, opts) {
     () => {
       // create table  init
       const sqliteCreateTableFile = fs.readFileSync(__dbCreateTablePath, 'utf8')
-      const db = new Database(__dbPath, { verbose: console.log })
+      const db = new Database(__dbPath, { verbose: () => {} })
       db.exec(sqliteCreateTableFile)
 
       fastify.scheduler.addSimpleIntervalJob(job)
@@ -68,45 +68,81 @@ export default async function (fastify, opts) {
         const [delegator, id, mud, usdt, unlock_time, event] = args
         const hash = event.log.transactionHash
         console.log('Delegate log', { delegator, id, mud, usdt, unlock_time, hash })
-        fastify.inject({
-          method: 'POST',
-          url: '/confirm-delegate',
-          payload: {
-            hash
-          }
-        })
+        fastify
+          .inject({
+            method: 'POST',
+            url: '/confirm-delegate',
+            payload: {
+              hash
+            }
+          })
+          .then((res) => {
+            console.log('Delegate event success --->', res.body)
+          })
+          .catch((err) => {
+            console.log('Delegate event err --->', err)
+          })
       })
 
       delaney.on('Claim', (...args) => {
         const [delegator, id, usdt, mud, signature, event] = args
         const hash = event.log.transactionHash
-        console.log('Claim', { delegator, id, usdt, mud, signature, hash })
+        console.log('Claim log', { delegator, id, usdt, mud, signature, hash })
+
+        fastify
+          .inject({
+            method: 'POST',
+            url: '/confirm-claim',
+            payload: {
+              hash
+            }
+          })
+          .then((res) => {
+            console.log('Claim event success --->', res.body)
+          })
+          .catch((err) => {
+            console.log('Claim event err --->', err)
+          })
       })
 
       delaney.on('Undelegate', (...args) => {
         const [delegator, id, usdt, mud, event] = args
         const hash = event.log.transactionHash
         console.log('Undelegate log', { delegator, id, usdt, mud, hash })
-        fastify.inject({
-          method: 'POST',
-          url: '/confirm-undelegate',
-          payload: {
-            hash
-          }
-        })
+        fastify
+          .inject({
+            method: 'POST',
+            url: '/confirm-undelegate',
+            payload: {
+              hash
+            }
+          })
+          .then((res) => {
+            console.log('Undelegate event success --->', res.body)
+          })
+          .catch((err) => {
+            console.log('Undelegate event err --->', err)
+          })
       })
 
       delaney.on('Redelegate', (...args) => {
         const [delegator, id, usdt, mud, event] = args
         const hash = event.log.transactionHash
         console.log('Redelegate log', { delegator, id, usdt, mud, hash })
-        fastify.inject({
-          method: 'POST',
-          url: '/confirm-redelegate',
-          payload: {
-            hash
-          }
-        })
+        fastify
+          .inject({
+            method: 'POST',
+            url: '/confirm-redelegate',
+            payload: {
+              hash
+            }
+          })
+          .then((res) => {
+            console.log('Redelegate event success --->', res.body)
+          })
+          .catch((err) => {
+            console.log('Redelegate event err --->', err)
+          })
       })
 
       console.log('successfully booted!')
