@@ -1,4 +1,4 @@
-import { mudPrice, pageSql } from '../utils/index.js'
+import { mudPrice, pageSql, getChainReceipt } from '../utils/index.js'
 import { ErrorInputCode, ErrorInputMsg, ErrorDataNotExistCode, ErrorDataNotExistMsg, ErrorBusinessCode, ErrorBusinessMsg, TokenWei, ReceiptFail } from '../utils/constant.js'
 import { DelegateStatusDelegating, DelegateStatusSuccess, DelegateStatusFail, DelegateStatusUndelegating, DelegateStatusWithdrew } from '../utils/constant.js'
 import {
@@ -1047,6 +1047,37 @@ export default async function (fastify, opts) {
     address = address.toLowerCase()
     console.log({ address })
 
+    // TODO
+    // 根据address去数据库查询数据，是否有待领取的列表
+    // 如果是未领取，但是超过deadline，而且在链上已经确认没有领取，重新去签名一个奖励
+    const claims = db.prepare(`SELECT * FROM claim WHERE address = ? AND status = ? AND deadline < datetime('now') AND hash != ? `).all(address, ClaimStatusReceiving, ZeroAddress)
+    for (const claim of claims) {
+      const { id, reward_ids, hash } = claim
+      const failedCallBack = (hash) => {
+        db.prepare('UPDATE claim SET status = ? WHERE hash = ?').run(ClaimStatusReceiveFailed, hash)
+      }
+      const { code, data } = getChainReceipt(hash, 'Claim', failedCallBack)
+      if (code !== 0) {
+        continue
+      }
+      const { logArgs } = data
+      if (string.isArray(logArgs) && logArgs.length == 5) {
+        const contractId = logArgs[1]
+        const signature = logArgs[4]
+        const { delegator } = await delaney.claimants(contractId)
+        let isClaim = await delaney.signatures(signature)
+        if (delegator === address && !isClaim) {
+          const { static_ids, dynamic_ids } = reward_ids
+          if (static_ids.length > 0) {
+            db.prepare(`UPDATE static_reward SET status = ? WHERE address = ? AND id IN (${static_ids.map(() => '?').join(',')})`).run(RewardUnclaimed, address, ...static_ids)
+          }
+          if (dynamic_ids.length > 0) {
+            db.prepare(`UPDATE static_reward SET status = ? WHERE address = ? AND id IN (${dynamic_ids.map(() => '?').join(',')})`).run(RewardUnclaimed, address, ...dynamic_ids)
+          }
+        }
+      }
+    }
+
     let tatal_usdt = 0
 
     let static_reward_ids = []
@@ -1081,16 +1112,16 @@ export default async function (fastify, opts) {
 
   // 用户获取领取奖励的签名
   // https://coinsbench.com/how-to-sign-a-message-with-ethers-js-v6-and-then-validate-it-in-solidity-89cd4f172dfd
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x00000be6819f41400225702d32d3dd23663dd690", "usdt":21012100, "mud_min":9999904, "reward_ids": "{\"dynamic_ids\":[5,10],\"static_ids\":[]}"}' http://127.0.0.1:3000/sign-claim
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x00000be6819f41400225702d32d3dd23663dd690", "usdt":21012100, "min_mud":9999904, "reward_ids": {"dynamic_ids":[5,10],"static_ids":[]}}' http://127.0.0.1:3000/sign-claim
   fastify.post('/sign-claim', async function (request, reply) {
     const { db } = fastify
-    let { address, usdt, mud_min, reward_ids } = request.body
+    let { address, usdt, min_mud, reward_ids } = request.body
     console.log(request.body)
     address = address.toLowerCase()
 
     const deadline = parseInt(new Date().getTime() / 1000) + 10 * 60 // 十分钟内需要上链
 
-    if (!address || !usdt || mud_min == undefined || !reward_ids) {
+    if (!address || !usdt || min_mud == undefined || !reward_ids) {
       return {
         code: ErrorInputCode,
         msg: ErrorInputMsg + 'address',
@@ -1098,16 +1129,12 @@ export default async function (fastify, opts) {
       }
     }
 
-    // TODO
-    // 根据address去数据库查询数据，是否有待领取的列表
-    // 如果是未领取，但是超过deadline，而且在链上已经确认没有领取，重新去签名一个奖励
-
     // reward_ids 是用户去领取了哪些奖励id，比如 "{dynamic_ids:[1,5,6], static_ids:[1,8,9]}"
     // TODO: 检查 reward_ids 对应的 usdt 之和 是否等于用户传进来的usdt的数值
     let total_usdt = 0
     const { static_ids, dynamic_ids } = reward_ids
-
-    if (Array.isArray(static_ids)) {
+    console.log({static_ids, dynamic_ids})
+    if (Array.isArray(static_ids) && static_ids.length > 0) {
       const dynamic_rewards = db
         .prepare(`SELECT usdt FROM static_reward WHERE address = ? AND status = ? AND id IN (${static_ids.map(() => '?').join(',')})`)
         .all([address, RewardUnclaimed, ...static_ids])
@@ -1117,7 +1144,7 @@ export default async function (fastify, opts) {
       }
     }
 
-    if (Array.isArray(dynamic_ids)) {
+    if (Array.isArray(dynamic_ids) && dynamic_ids.length > 0) {
       const dynamic_rewards = db
         .prepare(`SELECT usdt FROM dynamic_reward WHERE address = ? AND status = ? AND id IN (${dynamic_ids.map(() => '?').join(',')})`)
         .all([address, RewardUnclaimed, ...dynamic_ids])
@@ -1127,27 +1154,31 @@ export default async function (fastify, opts) {
       }
     }
 
-    // if (total_usdt !== usdt) {
-    //   return {
-    //     code: ErrorBusinessCode,
-    //     msg: 'input parameter usdt verification failed',
-    //     data: {}
-    //   }
-    // }
+    console.log({total_usdt, usdt})
+    if (total_usdt !== usdt) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'input parameter usdt verification failed',
+        data: {}
+      }
+    }
 
     const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
     const signer = new Wallet(privateKey)
 
-    const digest = hash_1.id(address + usdt + mud_min + JSON.stringify(reward_ids) + deadline)
+    const data = address + usdt + min_mud + JSON.stringify(reward_ids) + deadline
+    console.log('signature data string', data)
+    const digest = hash_1.id(data)
     const digestBytes = bytes_1.arrayify(digest)
 
     const signature = await signer.signMessage(digestBytes)
+    console.log('signature', signature)
 
     // TODO: 将数据写入数据库
     db.prepare('INSERT INTO claim (address, usdt, min_mud, reward_ids, status, signature, deadline) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
       address,
       usdt,
-      mud_min,
+      min_mud,
       JSON.stringify(reward_ids),
       ClaimStatusReceiving,
       signature,
@@ -1157,12 +1188,12 @@ export default async function (fastify, opts) {
     reply.send({
       code: 0,
       msg: '',
-      data: { address, usdt, mud_min, reward_ids, signature, deadline }
+      data: { address, usdt, min_mud, reward_ids, signature, deadline }
     })
   })
 
   // 发起领取奖励拿到交易哈希之后， 将奖励信息写入数据库
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "usdt":0, "mud_min":0, "reward_ids": {"dynamic_ids":[1, 2, 6], "static_ids":[2, 8]}, "hash":""}' http://127.0.0.1:3000/claim
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "usdt":0, "min_mud":0, "reward_ids": {"dynamic_ids":[1, 2, 6], "static_ids":[2, 8]}, "hash":""}' http://127.0.0.1:3000/claim
   fastify.post('/claim', async function (request, reply) {
     const { db } = fastify
     let { address, reward_ids, hash, signature } = request.body
@@ -1236,73 +1267,41 @@ export default async function (fastify, opts) {
     let { hash } = request.query
 
     //hash 去链上校验
-    const receipt = await provider.getTransactionReceipt(hash)
-    if (!receipt) {
-      return {
-        code: ErrorBusinessCode,
-        msg: 'receipt is not exist',
-        data: {}
-      }
-    }
-
-    // to 要等于我们的合约是为了防止别人搞个假事件作弊
-    if (receipt.to.toLowerCase() !== delaneyAddress.toLowerCase()) {
-      return {
-        code: ErrorBusinessCode,
-        msg: 'unknow error',
-        data: {}
-      }
-    }
-
-    // 处理交易失败
-    if (receipt.status == 0) {
+    const { code, msg, data } = getChainReceipt(hash, 'Claim', (hash) => {
       const info = db.prepare('UPDATE claim SET status = ? WHERE hash = ?').run(ClaimStatusReceiveFailed, hash)
       console.log(info)
-      return {
-        code: ErrorBusinessCode,
-        msg: 'claim failed',
-        data: {}
-      }
+    })
+    if (code !== 0) {
+      return { code, msg, data }
     }
 
-    const logs = receipt.logs || []
-    let findLog = false
-    let logArgs
-    for (const log of logs) {
-      const logDescription = delaney.interface.parseLog(log)
-      if (logDescription && logDescription.name == 'Claim') {
-        logArgs = logDescription.args
-        findLog = true
-        break
-      }
-    }
-
-    if (!findLog) {
-      return {
-        code: ErrorBusinessCode,
-        msg: 'unknow error',
-        data: {}
-      }
-    }
-
-    const from = receipt.from.toLowerCase()
+    const { from, logArgs } = data
     const cid = logArgs[1]
-
     console.log({ id: cid })
 
-    let { delegator, minMud, usdt, rewardIds, deadline } = (await delaney.claimants(cid)).toObject(true)
+    let { delegator, rewardIds } = (await delaney.claimants(cid)).toObject(true)
+    console.log({address: delegator, rewardIds})
 
     const transaction = db.transaction(() => {
-      db.prepare('UPDATE claim SET cid = ？, status = ? WHERE hash = ?').run(cid, ClaimStatusReceived, hash)
+      db.prepare('UPDATE claim SET cid = ？, status = ? WHERE address = ? AND hash = ?').run(cid, ClaimStatusReceived, delegator, hash)
 
-      let obj = JSON.parse(rewardIds)
-      const { static_ids, dynamic_ids } = obj
+      const { static_ids, dynamic_ids } = JSON.parse(rewardIds)
+      console.log({static_ids, dynamic_ids})
 
-      let placeholders = static_ids.map(() => '?').join(', ')
-      db.prepare(`UPDATE static_reward SET status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(ClaimStatusReceived, address, static_ids)
-
-      placeholders = dynamic_ids.map(() => '?').join(', ')
-      db.prepare(`UPDATE dynamic_reward SET status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(ClaimStatusReceived, address, dynamic_ids)
+      if (String.isArray(static_ids) && static_ids.length > 0) {
+        db.prepare(`UPDATE static_reward SET status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${static_ids.map(() => '?').join(', ')})`).run(
+          ClaimStatusReceived,
+          address,
+          ...static_ids
+        )
+      }
+      if (String.isArray(dynamic_ids) && dynamic_ids.length > 0) {
+        db.prepare(`UPDATE dynamic_reward SET status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${dynamic_ids.map(() => '?').join(', ')})`).run(
+          ClaimStatusReceived,
+          address,
+          ...dynamic_ids
+        )
+      }
     })
     transaction()
 

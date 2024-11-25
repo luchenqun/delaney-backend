@@ -1,6 +1,7 @@
 import { ethers } from 'ethers'
 import bn from 'bignumber.js'
 import fs from 'fs-extra'
+import { ReceiptFail } from './constant.js'
 
 const { rpc, poolAddress, mudAddress, delaneyAddress } = fs.readJSONSync('config.json')
 
@@ -114,4 +115,68 @@ export const pageSql = (table, page, page_size, sort_field, sort_order, filters)
 
 export const sleep = (ms) => {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+export const getChainReceipt = async (hash, event_name, callback) => {
+  const receipt = await provider.getTransactionReceipt(hash)
+  if (!receipt) {
+    return {
+      code: ErrorBusinessCode,
+      msg: 'receipt is not exist',
+      data: {}
+    }
+  }
+
+  // to 要等于我们的合约是为了防止别人搞个假事件作弊
+  if (receipt.to.toLowerCase() !== delaneyAddress.toLowerCase()) {
+    return {
+      code: ErrorBusinessCode,
+      msg: 'unknow error',
+      data: {}
+    }
+  }
+
+  // 处理交易失败，我们把质押额度返回给用户
+  if (receipt.status == ReceiptFail) {
+    if (callback) {
+      callback(hash)
+    }
+    return {
+      code: ErrorBusinessCode,
+      msg: 'undelegate failed',
+      data: {}
+    }
+  }
+
+  // 能不能找到事件
+  const logs = receipt.logs || []
+  let findLog = false
+  let logArgs
+  for (const log of logs) {
+    const logDescription = delaney.interface.parseLog(log)
+    if (logDescription && logDescription.name == event_name) {
+      logArgs = logDescription.args
+      findLog = true
+      break
+    }
+  }
+
+  if (!findLog) {
+    return {
+      code: ErrorBusinessCode,
+      msg: 'unknow error',
+      data: {}
+    }
+  }
+
+  const from = receipt.from.toLowerCase()
+
+  return {
+    code: 0,
+    msg: 'success...',
+    data: {
+      from,
+      logArgs
+    }
+  }
 }
