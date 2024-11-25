@@ -290,27 +290,6 @@ export default async function (fastify, opts) {
       }
     }
 
-    // 确保交易存在
-    const tx = await provider.getTransaction(hash)
-    if (!tx) {
-      return {
-        code: ErrorBusinessCode,
-        msg: 'tx is not exist',
-        data: {}
-      }
-    }
-
-    // 确保交易是delegate
-    const txDescription = delaney.interface.parseTransaction(tx)
-    if (!(txDescription && txDescription.name === 'delegate')) {
-      return {
-        code: ErrorBusinessCode,
-        msg: 'tx is not call contract delaney function delegate',
-        data: {}
-      }
-    }
-    console.log(txDescription)
-
     // 确保交易已经上链
     const receipt = await provider.getTransactionReceipt(hash)
     if (!receipt) {
@@ -329,6 +308,19 @@ export default async function (fastify, opts) {
         data: {}
       }
     }
+
+    // 确保交易调用的方法就是delegate
+    const tx = await provider.getTransaction(hash)
+    const txDescription = delaney.interface.parseTransaction(tx)
+    // 交易解码不出来，或者解码出来的不是delegate
+    if (!txDescription || (txDescription && txDescription.name !== 'delegate')) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'tx is not call contract delaney function delegate',
+        data: {}
+      }
+    }
+
     const from = receipt.from.toLowerCase()
 
     // 处理交易失败
@@ -345,7 +337,7 @@ export default async function (fastify, opts) {
       }
     }
 
-    // 能不能找到Delegate事件
+    // 从Delegate事件中拿到合约中质押id
     const logs = receipt.logs || []
     let findLog = false
     let logArgs
@@ -626,6 +618,7 @@ export default async function (fastify, opts) {
       }
     }
 
+    // 确保交易已经上链
     const receipt = await provider.getTransactionReceipt(hash)
     if (!receipt) {
       return {
@@ -635,19 +628,34 @@ export default async function (fastify, opts) {
       }
     }
 
-    // to 要等于我们的合约是为了防止别人搞个假事件作弊
+    // 确保调用的就是 delaney 合约
     if (receipt.to.toLowerCase() !== delaneyAddress.toLowerCase()) {
       return {
         code: ErrorBusinessCode,
-        msg: 'unknow error',
+        msg: 'tx is not call contract delaney',
         data: {}
       }
     }
 
-    // 处理交易失败，我们把质押额度返回给用户
-    if (receipt.status == 0) {
-      const info = db.prepare('UPDATE delegate SET status = ? WHERE undelegate_hash = ?').run(DelegateStatusSuccess, hash)
-      console.log(info)
+    // 确保交易调用的方法就是 undelegate
+    const tx = await provider.getTransaction(hash)
+    const txDescription = delaney.interface.parseTransaction(tx)
+    // 交易解码不出来，或者解码出来的不是undelegate
+    if (!txDescription || (txDescription && txDescription.name !== 'undelegate')) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'tx is not call contract delaney function undelegate',
+        data: {}
+      }
+    }
+
+    const from = receipt.from.toLowerCase()
+
+    // 如果取消质押交易失败，我们更新质押状态
+    // 后面都用cid对delegate进行更新，是为了防止用户直接通过合约调用undelegate导致没有传递hash进来
+    let [cid, back_min_mud, _] = txDescription.args
+    if (receipt.status == ReceiptFail) {
+      db.prepare('UPDATE delegate SET status = ?, undelegate_hash = ? WHERE cid = ?').run(DelegateStatusSuccess, hash, cid)
       return {
         code: ErrorBusinessCode,
         msg: 'undelegate failed',
@@ -655,52 +663,24 @@ export default async function (fastify, opts) {
       }
     }
 
-    // const tx = await provider.getTransaction(hash)
-    // const txDescription = delaney.interface.parseTransaction(tx)
-
-    // 能不能找到Undelegate事件
-    const logs = receipt.logs || []
-    let findLog = false
-    let logArgs
-    for (const log of logs) {
-      const logDescription = delaney.interface.parseLog(log)
-      if (logDescription && logDescription.name == 'Undelegate') {
-        logArgs = logDescription.args
-        findLog = true
-        break
-      }
-    }
-
-    if (!findLog) {
-      return {
-        code: ErrorBusinessCode,
-        msg: 'unknow error',
-        data: {}
-      }
-    }
-
-    const from = receipt.from.toLowerCase()
-    const cid = logArgs[1]
-    // TODO 根据id去合约查询delegate的状态，要确认没有取消质押
-    console.log({ id: cid })
-    let { mud, usdt, back_mud, withdrew } = (await delaney.delegations(cid)).toObject(true)
+    // 根据cid去合约查询delegate的信息。因为上面已经确认了是delegate而且交易已经成功了
+    let { mud, usdt, back_mud } = (await delaney.delegations(cid)).toObject(true)
     mud = parseInt(mud)
     usdt = parseInt(usdt)
+    back_min_mud = parseInt(back_min_mud)
     back_mud = parseInt(back_mud)
 
-    if (!withdrew) {
+    let delegate = db.prepare('SELECT * FROM delegate WHERE cid = ?').get(cid)
+    if (delegate) {
       return {
         code: ErrorBusinessCode,
-        msg: 'you are not withdrew in chain',
+        msg: 'delegate info is not exist in database',
         data: {}
       }
     }
 
-    let delegate = db.prepare('SELECT * FROM delegate WHERE undelegate_hash = ?').get(hash)
-
-    // 考虑重复确认的问题
-    // TODO 有可能用户根本没有发undelegate 消息给后台
-    if (delegate.status != DelegateStatusUndelegating) {
+    // 之所以要考虑DelegateStatusSuccess状态，是有可能用户根本没有发undelegate消息给后台
+    if (!(delegate.status == DelegateStatusUndelegating || delegate.status == DelegateStatusSuccess)) {
       return {
         code: ErrorBusinessCode,
         msg: 'you have confirmed',
@@ -730,11 +710,13 @@ export default async function (fastify, opts) {
 
     const transaction = db.transaction(() => {
       // 质押信息更新
-      db.prepare('UPDATE delegate SET back_mud = ?, status = ?, undelegate_time = ? WHERE undelegate_hash = ?').run(
+      db.prepare('UPDATE delegate SET back_mud = ?, back_min_mud = ?, status = ?, undelegate_time = ?, undelegate_hash = ? WHERE cid = ?').run(
         back_mud,
+        back_min_mud,
         DelegateStatusWithdrew,
         parseInt(new Date().getTime() / 1000),
-        hash
+        hash,
+        cid
       )
       // 自己信息更新：自己质押的mud/usdt更新，状态更新
       db.prepare('UPDATE user SET mud = ?, usdt = ? WHERE address = ?').run(self.mud - mud, self.usdt - usdt, self.address)
@@ -774,7 +756,7 @@ export default async function (fastify, opts) {
 
     transaction()
 
-    delegate = db.prepare('SELECT * FROM delegate WHERE undelegate_hash = ?').get(hash)
+    delegate = db.prepare('SELECT * FROM delegate WHERE cid = ?').get(cid)
 
     reply.send({
       code: 0,
