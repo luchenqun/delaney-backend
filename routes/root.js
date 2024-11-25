@@ -1393,11 +1393,6 @@ export default async function (fastify, opts) {
     // user = db.prepare('SELECT star FROM user WHERE address = ?').get(address)
     // console.log(3, { user })
 
-    const hash = '0x88888a4b7ee4cb6351cf1a1eeb9af84284ebb3a0e6818e77bc66ac4634a8ff0a'
-    const address = '0x55555d6c72886e5500a9410ca15d08a16011ed95'
-    const info = db.prepare('INSERT OR REPLACE INTO delegate (address, status, hash) VALUES (?, ?, ?)').run(address, 8, hash)
-    console.log(info)
-
     reply.send({
       code: 0,
       msg: 'db test',
