@@ -1139,12 +1139,14 @@ export default async function (fastify, opts) {
     // TODO: 检查 reward_ids 对应的 usdt 之和 是否等于用户传进来的usdt的数值
     let total_usdt = 0
     const { static_ids, dynamic_ids } = reward_ids
-    console.log({static_ids, dynamic_ids})
+    console.log({ static_ids, dynamic_ids })
     if (Array.isArray(static_ids) && static_ids.length > 0) {
-      const dynamic_rewards = db
+      const static_rewards = db
         .prepare(`SELECT usdt FROM static_reward WHERE address = ? AND status = ? AND id IN (${static_ids.map(() => '?').join(',')})`)
         .all([address, RewardUnclaimed, ...static_ids])
-      for (const reward of dynamic_rewards) {
+      console.log({ static_rewards })
+
+      for (const reward of static_rewards) {
         const { usdt } = reward
         total_usdt += usdt
       }
@@ -1154,13 +1156,16 @@ export default async function (fastify, opts) {
       const dynamic_rewards = db
         .prepare(`SELECT usdt FROM dynamic_reward WHERE address = ? AND status = ? AND id IN (${dynamic_ids.map(() => '?').join(',')})`)
         .all([address, RewardUnclaimed, ...dynamic_ids])
+
+      console.log({ dynamic_rewards })
+
       for (const reward of dynamic_rewards) {
         const { usdt } = reward
         total_usdt += usdt
       }
     }
 
-    console.log({total_usdt, usdt})
+    console.log({ total_usdt, usdt })
     if (total_usdt !== usdt) {
       return {
         code: ErrorBusinessCode,
@@ -1199,16 +1204,26 @@ export default async function (fastify, opts) {
   })
 
   // 发起领取奖励拿到交易哈希之后， 将奖励信息写入数据库
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "usdt":0, "min_mud":0, "reward_ids": {"dynamic_ids":[1, 2, 6], "static_ids":[2, 8]}, "hash":""}' http://127.0.0.1:3000/claim
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "reward_ids": {"dynamic_ids":[1, 2, 6], "static_ids":[2, 8]}, "hash":"", "signature":""}' http://127.0.0.1:3000/claim
   fastify.post('/claim', async function (request, reply) {
     const { db } = fastify
     let { address, reward_ids, hash, signature } = request.body
+    console.log({ address, reward_ids, hash, signature })
+
+    const claimId = db.prepare('SELECT id FROM claim WHERE address = ? AND signature = ?').get(address, signature)
+    if (claimId === undefined) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'no cliam id found',
+        data: {}
+      }
+    }
+    const { id } = claimId
+    console.log({ id })
 
     const { static_ids, dynamic_ids } = reward_ids
-    const transaction = db.transaction(() => {
-      const claim = db.prepare('SELECT * FROM claim WHERE address = ? AND signature = ?').get(address, signature)
-      const { id } = claim
 
+    const transaction = db.transaction(() => {
       if (Array.isArray(static_ids) && static_ids.length > 0) {
         let placeholders = static_ids.map(() => '?').join(', ')
         db.prepare(`UPDATE static_reward SET claim_id = ?, hash = ?, status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(
@@ -1221,7 +1236,6 @@ export default async function (fastify, opts) {
       }
       if (Array.isArray(dynamic_ids) && dynamic_ids.length > 0) {
         let placeholders = dynamic_ids.map(() => '?').join(', ')
-        console.log('dynamic', placeholders)
         db.prepare(`UPDATE dynamic_reward SET claim_id = ?,hash = ?, status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(
           id,
           hash,
@@ -1286,13 +1300,13 @@ export default async function (fastify, opts) {
     console.log({ id: cid })
 
     let { delegator, rewardIds } = (await delaney.claimants(cid)).toObject(true)
-    console.log({address: delegator, rewardIds})
+    console.log({ address: delegator, rewardIds })
 
     const transaction = db.transaction(() => {
       db.prepare('UPDATE claim SET cid = ？, status = ? WHERE address = ? AND hash = ?').run(cid, ClaimStatusReceived, delegator, hash)
 
       const { static_ids, dynamic_ids } = JSON.parse(rewardIds)
-      console.log({static_ids, dynamic_ids})
+      console.log({ static_ids, dynamic_ids })
 
       if (String.isArray(static_ids) && static_ids.length > 0) {
         db.prepare(`UPDATE static_reward SET status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${static_ids.map(() => '?').join(', ')})`).run(
