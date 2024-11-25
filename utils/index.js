@@ -118,7 +118,7 @@ export const sleep = (ms) => {
 }
 
 export const now = () => {
-  return new Date().getTime() / 1000
+  return parseInt(new Date().getTime() / 1000)
 }
 
 export const getChainReceipt = async (hash, event_name, callback) => {

@@ -294,9 +294,9 @@
         "type": "string"
       },
       {
-        "internalType": "bytes",
+        "internalType": "string",
         "name": "signature",
-        "type": "bytes"
+        "type": "string"
       },
       {
         "internalType": "uint256",
@@ -331,17 +331,27 @@
       },
       {
         "internalType": "uint256",
+        "name": "usdt",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
         "name": "minMud",
         "type": "uint256"
       },
       {
         "internalType": "uint256",
-        "name": "usdt",
+        "name": "mud",
         "type": "uint256"
       },
       {
         "internalType": "string",
         "name": "rewardIds",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "signature",
         "type": "string"
       },
       {
@@ -614,11 +624,50 @@
     "inputs": [
       {
         "internalType": "uint256",
+        "name": "_fee",
+        "type": "uint256"
+      }
+    ],
+    "name": "setFee",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_minPersonInvestUsdt",
+        "type": "uint256"
+      }
+    ],
+    "name": "setMinPersonInvestUsdt",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
         "name": "_periodDuration",
         "type": "uint256"
       }
     ],
     "name": "setPeriodDuration",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_periodNum",
+        "type": "uint256"
+      }
+    ],
+    "name": "setPeriodNum",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
