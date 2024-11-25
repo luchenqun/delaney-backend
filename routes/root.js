@@ -24,7 +24,7 @@ import {
   MessageTypePersonReward,
   MessageTypeTeamReward
 } from '../utils/constant.js'
-import { randRef, provider, delaney, delaneyAddress } from '../utils/index.js'
+import { randRef, provider, delaney, delaneyAddress, now } from '../utils/index.js'
 
 import { ZeroAddress, ZeroHash, Wallet } from 'ethers'
 import bytes_1 from '@ethersproject/bytes'
@@ -1053,39 +1053,25 @@ export default async function (fastify, opts) {
     address = address.toLowerCase()
     console.log({ address })
 
-    // TODO
-    // 根据address去数据库查询数据，是否有待领取的列表
-    // 如果是未领取，但是超过deadline，而且在链上已经确认没有领取，重新去签名一个奖励
-    const claims = db.prepare(`SELECT * FROM claim WHERE address = ? AND status = ? AND deadline < datetime('now') AND hash != ? `).all(address, ClaimStatusReceiving, ZeroAddress)
-    for (const claim of claims) {
-      const { id, reward_ids, hash } = claim
-      const failedCallBack = (hash) => {
-        db.prepare('UPDATE claim SET status = ? WHERE hash = ?').run(ClaimStatusReceiveFailed, hash)
-      }
-      const { code, data } = getChainReceipt(hash, 'Claim', failedCallBack)
-      if (code !== 0) {
-        continue
-      }
-      const { logArgs } = data
-      if (string.isArray(logArgs) && logArgs.length == 5) {
-        const contractId = logArgs[1]
-        const signature = logArgs[4]
-        const { delegator } = await delaney.claimants(contractId)
-        let isClaim = await delaney.signatures(signature)
-        if (delegator === address && !isClaim) {
-          const { static_ids, dynamic_ids } = reward_ids
-          if (static_ids.length > 0) {
-            db.prepare(`UPDATE static_reward SET status = ? WHERE address = ? AND id IN (${static_ids.map(() => '?').join(',')})`).run(RewardUnclaimed, address, ...static_ids)
-          }
-          if (dynamic_ids.length > 0) {
-            db.prepare(`UPDATE static_reward SET status = ? WHERE address = ? AND id IN (${dynamic_ids.map(() => '?').join(',')})`).run(RewardUnclaimed, address, ...dynamic_ids)
-          }
+    const { buy_mud_wei } = await mudPrice()
+
+    // 如果在待签列表里面存在，我们直接返回该数据
+    const claim = db.prepare(`SELECT * FROM claim WHERE address = ? AND status = ? AND deadline < datetime('now')`).get(address, ClaimStatusReceiving)
+    if (claim) {
+      return {
+        code: 0,
+        msg: '',
+        data: {
+          usdt: claim.usdt,
+          mud: claim.usdt / buy_mud_wei,
+          reward_ids: JSON.parse(claim.reward_ids)
         }
       }
     }
 
     let tatal_usdt = 0
 
+    // claim 表没有签名的待领取列表，我们得去计算
     let static_reward_ids = []
     const static_rewards = db.prepare(`SELECT id, usdt FROM static_reward WHERE address = ? AND status = ? AND unlock_time < strftime('%s', 'now')`).all(address, RewardUnclaimed)
     for (const reward of static_rewards) {
@@ -1102,7 +1088,6 @@ export default async function (fastify, opts) {
       tatal_usdt += usdt
     }
 
-    const { buy_mud_wei } = await mudPrice()
     const mud = parseInt((tatal_usdt * TokenWei) / buy_mud_wei)
 
     return {
@@ -1122,10 +1107,9 @@ export default async function (fastify, opts) {
   fastify.post('/sign-claim', async function (request, reply) {
     const { db } = fastify
     let { address, usdt, min_mud, reward_ids } = request.body
-    console.log(request.body)
     address = address.toLowerCase()
 
-    const deadline = parseInt(new Date().getTime() / 1000) + 10 * 60 // 十分钟内需要上链
+    const deadline = now() + 10 * 60 // 十分钟内需要上链
 
     if (!address || !usdt || min_mud == undefined || !reward_ids) {
       return {
@@ -1135,8 +1119,24 @@ export default async function (fastify, opts) {
       }
     }
 
+    // 如果在待签列表里面存在，我们直接返回该数据
+    // 我们只允许后台给用户签发一条奖励信息，除非这条签名的交易信息已经过期了
+    // 用户拿着这条信息再次发起领取奖励也没事，因为我们一个签名只允许领取一次奖励
+    const claim = db.prepare(`SELECT * FROM claim WHERE address = ? AND status = ? AND deadline < datetime('now')`).get(address, ClaimStatusReceiving)
+    if (claim) {
+      const { address, usdt, min_mud, reward_ids, signature, deadline } = claim
+      return {
+        code: 0,
+        msg: '',
+        data: {
+          code: 0,
+          msg: '',
+          data: { address, usdt, min_mud, reward_ids, signature, deadline }
+        }
+      }
+    }
+
     // reward_ids 是用户去领取了哪些奖励id，比如 "{dynamic_ids:[1,5,6], static_ids:[1,8,9]}"
-    // TODO: 检查 reward_ids 对应的 usdt 之和 是否等于用户传进来的usdt的数值
     let total_usdt = 0
     const { static_ids, dynamic_ids } = reward_ids
     console.log({ static_ids, dynamic_ids })
@@ -1144,7 +1144,6 @@ export default async function (fastify, opts) {
       const static_rewards = db
         .prepare(`SELECT usdt FROM static_reward WHERE address = ? AND status = ? AND id IN (${static_ids.map(() => '?').join(',')})`)
         .all([address, RewardUnclaimed, ...static_ids])
-      console.log({ static_rewards })
 
       for (const reward of static_rewards) {
         const { usdt } = reward
@@ -1157,15 +1156,12 @@ export default async function (fastify, opts) {
         .prepare(`SELECT usdt FROM dynamic_reward WHERE address = ? AND status = ? AND id IN (${dynamic_ids.map(() => '?').join(',')})`)
         .all([address, RewardUnclaimed, ...dynamic_ids])
 
-      console.log({ dynamic_rewards })
-
       for (const reward of dynamic_rewards) {
         const { usdt } = reward
         total_usdt += usdt
       }
     }
 
-    console.log({ total_usdt, usdt })
     if (total_usdt !== usdt) {
       return {
         code: ErrorBusinessCode,
@@ -1185,45 +1181,17 @@ export default async function (fastify, opts) {
     const signature = await signer.signMessage(digestBytes)
     console.log('signature', signature)
 
-    // TODO: 将数据写入数据库
-    db.prepare('INSERT INTO claim (address, usdt, min_mud, reward_ids, status, signature, deadline) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
-      address,
-      usdt,
-      min_mud,
-      JSON.stringify(reward_ids),
-      ClaimStatusReceiving,
-      signature,
-      deadline
-    )
-
-    reply.send({
-      code: 0,
-      msg: '',
-      data: { address, usdt, min_mud, reward_ids, signature, deadline }
-    })
-  })
-
-  // 发起领取奖励拿到交易哈希之后， 将奖励信息写入数据库
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "reward_ids": {"dynamic_ids":[1, 2, 6], "static_ids":[2, 8]}, "hash":"", "signature":""}' http://127.0.0.1:3000/claim
-  fastify.post('/claim', async function (request, reply) {
-    const { db } = fastify
-    let { address, reward_ids, hash, signature } = request.body
-    console.log({ address, reward_ids, hash, signature })
-
-    const claimId = db.prepare('SELECT id FROM claim WHERE address = ? AND signature = ?').get(address, signature)
-    if (claimId === undefined) {
-      return {
-        code: ErrorBusinessCode,
-        msg: 'no cliam id found',
-        data: {}
-      }
-    }
-    const { id } = claimId
-    console.log({ id })
-
-    const { static_ids, dynamic_ids } = reward_ids
-
     const transaction = db.transaction(() => {
+      db.prepare('INSERT INTO claim (address, usdt, min_mud, reward_ids, status, signature, deadline) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        address,
+        usdt,
+        min_mud,
+        JSON.stringify(reward_ids),
+        ClaimStatusReceiving,
+        signature,
+        deadline
+      )
+
       if (Array.isArray(static_ids) && static_ids.length > 0) {
         let placeholders = static_ids.map(() => '?').join(', ')
         db.prepare(`UPDATE static_reward SET claim_id = ?, hash = ?, status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(
@@ -1244,16 +1212,38 @@ export default async function (fastify, opts) {
           ...dynamic_ids
         )
       }
-
-      db.prepare('UPDATE claim SET hash = ? WHERE id = ? AND signature = ?').run(hash, id, signature)
     })
     transaction()
 
-    const claim = db.prepare('SELECT * FROM claim WHERE hash = ?').get(hash)
+    reply.send({
+      code: 0,
+      msg: '',
+      data: { address, usdt, min_mud, reward_ids, signature, deadline }
+    })
+  })
+
+  // 发起领取奖励拿到交易哈希之后， 将奖励信息写入数据库
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "reward_ids": {"dynamic_ids":[1, 2, 6], "static_ids":[2, 8]}, "hash":"", "signature":""}' http://127.0.0.1:3000/claim
+  fastify.post('/claim', async function (request, reply) {
+    const { db } = fastify
+    let { hash, signature } = request.body
+    console.log({ hash, signature })
+
+    let claim = db.prepare('SELECT * FROM claim WHERE signature = ?').get(signature)
+    if (!claim) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'no cliam found',
+        data: {}
+      }
+    }
+
+    db.prepare('UPDATE claim SET hash = ? WHERE signature = ?').run(hash, signature)
+
     return {
       code: 0,
       msg: '',
-      data: claim
+      data: Object.assign(claim, { hash })
     }
   })
 
@@ -1261,17 +1251,17 @@ export default async function (fastify, opts) {
   // curl -X GET  -H "Content-Type: application/json" http://127.0.0.1:3000/claim?hash=0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156
   fastify.get('/claim', async function (request, reply) {
     const { db } = fastify
-    let { hash } = request.query
-    console.log('get claim hash', hash)
+    let { signature } = request.query
+    console.log('get claim by signature', signature)
     if (!hash) {
       return {
         code: ErrorInputCode,
-        msg: ErrorInputMsg + 'hash',
+        msg: ErrorInputMsg + 'signature',
         data: {}
       }
     }
 
-    const claim = db.prepare('SELECT * FROM claim WHERE hash = ? ').get(hash)
+    const claim = db.prepare('SELECT * FROM claim WHERE signature = ? ').get(signature)
 
     return {
       code: 0,
@@ -1286,46 +1276,158 @@ export default async function (fastify, opts) {
     const { db } = fastify
     let { hash } = request.query
 
-    //hash 去链上校验
-    const { code, msg, data } = getChainReceipt(hash, 'Claim', (hash) => {
-      const info = db.prepare('UPDATE claim SET status = ? WHERE hash = ?').run(ClaimStatusReceiveFailed, hash)
-      console.log(info)
-    })
-    if (code !== 0) {
-      return { code, msg, data }
+    if (!hash) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'hash',
+        data: {}
+      }
     }
 
-    const { from, logArgs } = data
-    const cid = logArgs[1]
-    console.log({ id: cid })
+    // 确保交易已经上链
+    const receipt = await provider.getTransactionReceipt(hash)
+    if (!receipt) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'receipt is not exist',
+        data: {}
+      }
+    }
 
-    let { delegator, rewardIds } = (await delaney.claimants(cid)).toObject(true)
-    console.log({ address: delegator, rewardIds })
+    // 确保调用的就是 delaney 合约
+    if (receipt.to.toLowerCase() !== delaneyAddress.toLowerCase()) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'tx is not call contract delaney',
+        data: {}
+      }
+    }
 
+    // 确保交易调用的方法就是claim
+    const tx = await provider.getTransaction(hash)
+    const txDescription = delaney.interface.parseTransaction(tx)
+    // 交易解码不出来，或者解码出来的不是claim
+    if (!txDescription || (txDescription && txDescription.name !== 'claim')) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'tx is not call contract delaney function claim',
+        data: {}
+      }
+    }
+
+    const from = receipt.from.toLowerCase()
+
+    let claim = db.prepare('SELECT * FROM claim WHERE hash = ?').get(hash)
+
+    // 处理交易失败
+    let [usdt, min_mud, reward_ids, signature, deadline] = txDescription.args
+    usdt = parseInt(usdt)
+    min_mud = parseInt(min_mud)
+    reward_ids = JSON.parse(reward_ids)
+    deadline = parseInt(deadline)
+    if (receipt.status == ReceiptFail) {
+      if (claim) {
+        db.prepare('UPDATE claim SET address = ?, usdt = ?, min_mud = ?, reward_ids = ?, status = ?, signature = ?, deadline = ? WHERE hash = ?').run(
+          from,
+          usdt,
+          min_mud,
+          reward_ids,
+          ClaimStatusReceiveFailed,
+          signature,
+          deadline,
+          hash
+        )
+      } else {
+        db.prepare('INSERT INTO claim (address, usdt, min_mud, reward_ids, status, signature, deadline, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+          from,
+          usdt,
+          min_mud,
+          reward_ids,
+          ClaimStatusReceiveFailed,
+          signature,
+          deadline,
+          hash
+        )
+      }
+
+      return {
+        code: ErrorBusinessCode,
+        msg: 'claim failed',
+        data: {}
+      }
+    }
+
+    // 考虑重复确认的问题
+    if (claim && claim.status !== ClaimStatusReceiving) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'you claim status is ' + claim.status,
+        data: {}
+      }
+    }
+
+    // 从Claim事件中拿到合约中实际领取到的mud数量
+    const logs = receipt.logs || []
+    let findLog = false
+    let logArgs
+    for (const log of logs) {
+      const logDescription = delaney.interface.parseLog(log)
+      if (logDescription && logDescription.name == 'Claim') {
+        logArgs = logDescription.args
+        findLog = true
+        break
+      }
+    }
+
+    if (!findLog) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'unknow error',
+        data: {}
+      }
+    }
+
+    const mud = parseInt(logArgs[3])
     const transaction = db.transaction(() => {
-      db.prepare('UPDATE claim SET cid = ？, status = ? WHERE address = ? AND hash = ?').run(cid, ClaimStatusReceived, delegator, hash)
+      if (claim) {
+        db.prepare('UPDATE claim SET address = ?, usdt = ?, min_mud = ?, mud = ?, reward_ids = ?, status = ?, signature = ?, deadline = ? WHERE hash = ?').run(
+          from,
+          usdt,
+          min_mud,
+          mud,
+          reward_ids,
+          ClaimStatusReceiveFailed,
+          signature,
+          deadline,
+          hash
+        )
+      } else {
+        db.prepare('INSERT INTO claim (address, usdt, min_mud, mud, reward_ids, status, signature, deadline, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+          from,
+          usdt,
+          min_mud,
+          mud,
+          reward_ids,
+          ClaimStatusReceiveFailed,
+          signature,
+          deadline,
+          hash
+        )
+      }
 
-      const { static_ids, dynamic_ids } = JSON.parse(rewardIds)
+      const { static_ids, dynamic_ids } = reward_ids
       console.log({ static_ids, dynamic_ids })
 
       if (String.isArray(static_ids) && static_ids.length > 0) {
-        db.prepare(`UPDATE static_reward SET status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${static_ids.map(() => '?').join(', ')})`).run(
-          ClaimStatusReceived,
-          address,
-          ...static_ids
-        )
+        db.prepare(`UPDATE static_reward SET status = ? WHERE id IN (${static_ids.map(() => '?').join(', ')})`).run(ClaimStatusReceived, ...static_ids)
       }
       if (String.isArray(dynamic_ids) && dynamic_ids.length > 0) {
-        db.prepare(`UPDATE dynamic_reward SET status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${dynamic_ids.map(() => '?').join(', ')})`).run(
-          ClaimStatusReceived,
-          address,
-          ...dynamic_ids
-        )
+        db.prepare(`UPDATE dynamic_reward SET status = ? WHERE AND id IN (${dynamic_ids.map(() => '?').join(', ')})`).run(ClaimStatusReceived, ...dynamic_ids)
       }
     })
     transaction()
 
-    const claim = db.prepare('SELECT * FROM claim WHERE hash = ?').get(hash)
+    claim = db.prepare('SELECT * FROM claim WHERE hash = ?').get(hash)
 
     return {
       code: 0,

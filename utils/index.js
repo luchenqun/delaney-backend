@@ -117,6 +117,10 @@ export const sleep = (ms) => {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+export const now = () => {
+  return new Date().getTime() / 1000
+}
+
 export const getChainReceipt = async (hash, event_name, callback) => {
   const receipt = await provider.getTransactionReceipt(hash)
   if (!receipt) {
