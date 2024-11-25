@@ -1056,7 +1056,7 @@ export default async function (fastify, opts) {
     const { buy_mud_wei } = await mudPrice()
 
     // 如果在待签列表里面存在，我们直接返回该数据
-    const claim = db.prepare(`SELECT * FROM claim WHERE address = ? AND status = ? AND deadline < datetime('now')`).get(address, ClaimStatusReceiving)
+    const claim = db.prepare(`SELECT * FROM claim WHERE address = ? AND status = ? AND deadline < strftime('%s', 'now')`).get(address, ClaimStatusReceiving)
     if (claim) {
       return {
         code: 0,
@@ -1188,7 +1188,7 @@ export default async function (fastify, opts) {
 
       if (Array.isArray(static_ids) && static_ids.length > 0) {
         let placeholders = static_ids.map(() => '?').join(', ')
-        db.prepare(`UPDATE static_reward SET claim_id = ?, status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(
+        db.prepare(`UPDATE static_reward SET claim_id = ?, status = ?, claim_time = strftime('%s', 'now') WHERE address = ? AND id IN (${placeholders})`).run(
           info.lastInsertRowid,
           RewardClaiming,
           address,
@@ -1197,7 +1197,7 @@ export default async function (fastify, opts) {
       }
       if (Array.isArray(dynamic_ids) && dynamic_ids.length > 0) {
         let placeholders = dynamic_ids.map(() => '?').join(', ')
-        db.prepare(`UPDATE dynamic_reward SET claim_id = ?, status = ?, claim_time = datetime('now') WHERE address = ? AND id IN (${placeholders})`).run(
+        db.prepare(`UPDATE dynamic_reward SET claim_id = ?, status = ?, claim_time = strftime('%s', 'now') WHERE address = ? AND id IN (${placeholders})`).run(
           info.lastInsertRowid,
           RewardClaiming,
           address,
