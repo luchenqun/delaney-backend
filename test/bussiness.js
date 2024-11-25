@@ -95,8 +95,12 @@ const main = async () => {
 
   {
     const periodDuration = await delaney.periodDuration()
+    let tx
     if (periodDuration > 60) {
-      const tx = await delaney.setPeriodDuration(1) // 方便测试每个周期设为1秒
+      tx = await delaney.setPeriodDuration(1) // 方便测试每个周期设为1秒
+      await tx.wait()
+
+      tx = await delaney.setPeriodNum(2) // 方便测试设为一共2个周期
       await tx.wait()
     }
   }
@@ -169,7 +173,7 @@ const main = async () => {
 
   // 用户获取最新的奖励信息
   {
-    await sleep(8000) // 等待8秒有静态奖励产出
+    await sleep(3000) // 等待3秒有静态奖励产出
     data = decodeReply(await client.get(`/latest-claim?address=${owner.address}`))
     console.log('latest-claim', data)
 
