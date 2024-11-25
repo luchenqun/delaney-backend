@@ -436,7 +436,7 @@ export default async function (fastify, opts) {
         ).run(cid, from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time, delegate.id)
       } else {
         db.prepare(
-          'INSERT INTO delegate (cid, address, mud, min_usdt, usdt, hash, period_duration, period_num, period_reward_ratio, status, unlock_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+          'INSERT INTO delegate (cid, address, mud, min_usdt, usdt, hash, period_duration, period_num, period_reward_ratio, status, unlock_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         ).run(cid, from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time)
       }
 
@@ -871,7 +871,7 @@ export default async function (fastify, opts) {
     }
 
     // 根据cid去合约查询delegate的信息。因为上面已经确认了是delegate而且交易已经成功了
-    let { mud, usdt, back_mud } = (await delaney.delegations(cid)).toObject(true)
+    let { mud, usdt, backMud: back_mud } = (await delaney.delegations(cid)).toObject(true)
     mud = parseInt(mud)
     usdt = parseInt(usdt)
     back_min_mud = parseInt(back_min_mud)
@@ -916,6 +916,7 @@ export default async function (fastify, opts) {
     }
 
     const transaction = db.transaction(() => {
+      console.log({ back_mud, back_min_mud, hash, cid })
       // 质押信息更新
       db.prepare('UPDATE delegate SET back_mud = ?, back_min_mud = ?, status = ?, undelegate_time = ?, undelegate_hash = ? WHERE cid = ?').run(
         back_mud,
