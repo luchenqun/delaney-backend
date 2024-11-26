@@ -80,6 +80,23 @@ const main = async () => {
   //   console.log('sign-claim', data)
   // }
 
+  // {
+  //   // 创建消息
+  //   const address = '0x00000Be6819f41400225702D32d3dd23663Dd690'
+  //   const usdt = '100000000000'
+  //   const min_mud = '1'
+  //   const reward_ids = 'xxxxxxxxxxxx'
+  //   const deadline = 1888888888
+  //   // 等效于Solidity中的keccak256(abi.encodePacked(account, tokenId))
+  //   const msgHash = ethers.solidityPackedKeccak256(['address', 'uint256', 'uint256', 'string', 'uint256'], [address, usdt, min_mud, reward_ids, deadline])
+  //   console.log(`msgHash：${msgHash}`)
+  //   // 签名
+  //   const messageHashBytes = ethers.getBytes(msgHash)
+  //   const signature = await owner.signMessage(messageHashBytes)
+  //   console.log(signature)
+  //   return
+  // }
+
   // 部署合约
   const pool = (await provider.getCode(poolAddress)).length > 2 ? new ethers.Contract(poolAddress, poolAbi, owner) : await deploy(owner, poolAbi, poolBytecode)
   console.log('contract pool address = ', pool.target)

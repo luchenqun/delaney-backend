@@ -18,8 +18,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@ethersproject/bytes": "^5.7.0",
-    "@ethersproject/hash": "^5.7.0",
     "@fastify/autoload": "^6.0.0",
     "@fastify/schedule": "^5.0.2",
     "@fastify/sensible": "^6.0.0",

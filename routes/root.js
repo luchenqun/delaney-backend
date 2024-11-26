@@ -1,3 +1,4 @@
+import { ethers, ZeroAddress, ZeroHash, Wallet } from 'ethers'
 import { mudPrice, pageSql, getChainReceipt } from '../utils/index.js'
 import { ErrorInputCode, ErrorInputMsg, ErrorDataNotExistCode, ErrorDataNotExistMsg, ErrorBusinessCode, ErrorBusinessMsg, TokenWei, ReceiptFail } from '../utils/constant.js'
 import { DelegateStatusDelegating, DelegateStatusSuccess, DelegateStatusFail, DelegateStatusUndelegating, DelegateStatusWithdrew } from '../utils/constant.js'
@@ -25,10 +26,6 @@ import {
   MessageTypeTeamReward
 } from '../utils/constant.js'
 import { randRef, provider, delaney, delaneyAddress, now } from '../utils/index.js'
-
-import { ZeroAddress, ZeroHash, Wallet } from 'ethers'
-import bytes_1 from '@ethersproject/bytes'
-import hash_1 from '@ethersproject/hash'
 
 BigInt.prototype.toJSON = function () {
   return this.toString()
@@ -1111,7 +1108,7 @@ export default async function (fastify, opts) {
 
     const deadline = now() + 10 * 60 // 十分钟内需要上链
 
-    if (!address || !usdt || min_mud == undefined || !reward_ids) {
+    if (!address || usdt == undefined || min_mud == undefined || !reward_ids) {
       return {
         code: ErrorInputCode,
         msg: ErrorInputMsg + 'address',
@@ -1172,14 +1169,11 @@ export default async function (fastify, opts) {
 
     const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
     const signer = new Wallet(privateKey)
-
-    const data = address + usdt + min_mud + JSON.stringify(reward_ids) + deadline
-    console.log('signature data string', data)
-    const digest = hash_1.id(data)
-    const digestBytes = bytes_1.arrayify(digest)
-
-    const signature = await signer.signMessage(digestBytes)
-    console.log('signature', signature)
+    const msgHash = ethers.solidityPackedKeccak256(['address', 'uint256', 'uint256', 'string', 'uint256'], [address, usdt, min_mud, JSON.stringify(reward_ids), deadline])
+    console.log(`msgHash: ${msgHash}`)
+    const messageHashBytes = ethers.getBytes(msgHash)
+    const signature = await signer.signMessage(messageHashBytes)
+    console.log(`signature: ${signature}`)
 
     const transaction = db.transaction(() => {
       const info = db
