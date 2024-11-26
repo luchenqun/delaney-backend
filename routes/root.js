@@ -25,7 +25,7 @@ import {
   MessageTypePersonReward,
   MessageTypeTeamReward
 } from '../utils/constant.js'
-import { randRef, provider, delaney, delaneyAddress, now } from '../utils/index.js'
+import { randRef, provider, delaney, delaneyAddress, signer, now } from '../utils/index.js'
 
 BigInt.prototype.toJSON = function () {
   return this.toString()
@@ -1167,12 +1167,11 @@ export default async function (fastify, opts) {
       }
     }
 
-    const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
-    const signer = new Wallet(privateKey)
+    const wallet = new Wallet(signer)
     const msgHash = ethers.solidityPackedKeccak256(['address', 'uint256', 'uint256', 'string', 'uint256'], [address, usdt, min_mud, JSON.stringify(reward_ids), deadline])
     console.log(`msgHash: ${msgHash}`)
     const messageHashBytes = ethers.getBytes(msgHash)
-    const signature = await signer.signMessage(messageHashBytes)
+    const signature = await wallet.signMessage(messageHashBytes)
     console.log(`signature: ${signature}`)
 
     const transaction = db.transaction(() => {
