@@ -455,8 +455,8 @@ export default async function (fastify, opts) {
           // 个人投资额度需要大于某个数才能获取个人奖励
           // TODO 测试阶段直接分发
           if (user.usdt >= config['preson_reward_min_usdt'] || true) {
-            const rewardUsdt = parseInt((config[RewardPersonKey + (i + 1)] * usdt) / 100)
-            db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, rewardUsdt, RewardTypePerson)
+            const reward_usdt = parseInt((config[RewardPersonKey + (i + 1)] * usdt) / 100)
+            db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, reward_usdt, RewardTypePerson)
           }
           // 没5层那就直接退出
           if (user.parent === ZeroAddress) {
@@ -1318,26 +1318,29 @@ export default async function (fastify, opts) {
     min_mud = parseInt(min_mud)
     reward_ids = JSON.parse(reward_ids)
     deadline = parseInt(deadline)
+    console.log(txDescription.args, deadline)
     if (receipt.status == ReceiptFail) {
       if (claim) {
-        db.prepare('UPDATE claim SET address = ?, usdt = ?, min_mud = ?, reward_ids = ?, status = ?, signature = ?, deadline = ? WHERE hash = ?').run(
+        db.prepare('UPDATE claim SET address = ?, usdt = ?, min_mud = ?, reward_ids = ?, status = ?, signature = ?, claim_time = ?, deadline = ? WHERE hash = ?').run(
           from,
           usdt,
           min_mud,
           reward_ids,
           ClaimStatusReceiveFailed,
           signature,
+          now(),
           deadline,
           hash
         )
       } else {
-        db.prepare('INSERT INTO claim (address, usdt, min_mud, reward_ids, status, signature, deadline, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+        db.prepare('INSERT INTO claim (address, usdt, min_mud, reward_ids, status, signature, claim_time, deadline, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
           from,
           usdt,
           min_mud,
           reward_ids,
           ClaimStatusReceiveFailed,
           signature,
+          now(),
           deadline,
           hash
         )
@@ -1390,20 +1393,11 @@ export default async function (fastify, opts) {
     const mud = parseInt(logArgs[3])
     const transaction = db.transaction(() => {
       if (claim) {
-        db.prepare('UPDATE claim SET cid = ?, address = ?, usdt = ?, min_mud = ?, mud = ?, reward_ids = ?, status = ?, signature = ?, deadline = ? WHERE hash = ?').run(
-          cid,
-          from,
-          usdt,
-          min_mud,
-          mud,
-          JSON.stringify(reward_ids),
-          ClaimStatusReceived,
-          signature,
-          deadline,
-          hash
-        )
+        db.prepare(
+          'UPDATE claim SET cid = ?, address = ?, usdt = ?, min_mud = ?, mud = ?, reward_ids = ?, status = ?, signature = ?, claim_time = ?, deadline = ? WHERE hash = ?'
+        ).run(cid, from, usdt, min_mud, mud, JSON.stringify(reward_ids), ClaimStatusReceived, signature, now(), deadline, hash)
       } else {
-        db.prepare('INSERT INTO claim (cid, address, usdt, min_mud, mud, reward_ids, status, signature, deadline, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+        db.prepare('INSERT INTO claim (cid, address, usdt, min_mud, mud, reward_ids, status, signature, claim_time, deadline, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
           cid,
           from,
           usdt,
@@ -1412,6 +1406,7 @@ export default async function (fastify, opts) {
           JSON.stringify(reward_ids),
           ClaimStatusReceived,
           signature,
+          now(),
           deadline,
           hash
         )
@@ -1421,10 +1416,10 @@ export default async function (fastify, opts) {
       console.log({ static_ids, dynamic_ids })
 
       if (Array.isArray(static_ids) && static_ids.length > 0) {
-        db.prepare(`UPDATE static_reward SET status = ?, hash = ? WHERE id IN (${static_ids.map(() => '?').join(', ')})`).run(ClaimStatusReceived, hash, ...static_ids)
+        db.prepare(`UPDATE static_reward SET status = ?, hash = ? WHERE id IN (${static_ids.map(() => '?').join(', ')})`).run(RewardClaimed, hash, ...static_ids)
       }
       if (Array.isArray(dynamic_ids) && dynamic_ids.length > 0) {
-        db.prepare(`UPDATE dynamic_reward SET status = ?, hash = ? WHERE id IN (${dynamic_ids.map(() => '?').join(', ')})`).run(ClaimStatusReceived, hash, ...dynamic_ids)
+        db.prepare(`UPDATE dynamic_reward SET status = ?, hash = ? WHERE id IN (${dynamic_ids.map(() => '?').join(', ')})`).run(RewardClaimed, hash, ...dynamic_ids)
       }
     })
     transaction()
