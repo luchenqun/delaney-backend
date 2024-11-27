@@ -102,7 +102,7 @@ export default async function (fastify, opts) {
     }
 
     // 检查父用户是否存在
-    const parent = db.prepare('SELECT address FROM user WHERE ref = ?').get(parent_ref)
+    const parent = db.prepare('SELECT * FROM user WHERE ref = ?').get(parent_ref)
     if (!parent) {
       return {
         code: ErrorDataNotExistCode,
@@ -112,11 +112,26 @@ export default async function (fastify, opts) {
     }
     console.log('parent', parent)
 
-    // 完成绑定关系
-    const ref = randRef() // 数据库里面已经做了ref不允许重复存在的限制。所以有一定概率注册失败，如果注册失败，让前端再重新注册一下
-    const info = db.prepare('INSERT INTO user (address, parent, ref, parent_ref) VALUES (?, ?, ?, ?)').run(address, parent.address, ref, parent_ref)
-    console.log(info)
-    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(address, MessageTypeCreateUser, '注册', '账户注册成功')
+    const transaction = db.transaction(() => {
+      // 更新上一级父级的直推人数
+      db.prepare('UPDATE user SET sub_person = ? WHERE address = ?').run(parent.sub_person + 1, parent.address)
+
+      // 更新所有父级的团队人数
+      let from = parent.address
+      while (from !== ZeroAddress) {
+        const user = db.prepare('SELECT * FROM user WHERE address = ?').get(from)
+        db.prepare('UPDATE user SET team_person = ? WHERE address = ?').run(user.team_person + 1, from)
+        from = user.parent
+      }
+
+      // 完成绑定关系
+      const ref = randRef() // 数据库里面已经做了ref不允许重复存在的限制。所以有一定概率注册失败，如果注册失败，让前端再重新注册一下
+      const info = db.prepare('INSERT INTO user (address, parent, ref, parent_ref) VALUES (?, ?, ?, ?)').run(address, parent.address, ref, parent_ref)
+      console.log(info)
+      db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(address, MessageTypeCreateUser, '注册', '账户注册成功')
+    })
+
+    transaction()
 
     user = db.prepare('SELECT * FROM user WHERE address = ?').get(address)
 
