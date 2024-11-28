@@ -281,6 +281,39 @@ export default async function (fastify, opts) {
     })
   })
 
+  // curl http://127.0.0.1:3000/delegate-user-stat?address=0x00000be6819f41400225702d32d3dd23663dd690 | jq
+  fastify.get('/delegate-user-stat', function (request, reply) {
+    const { db } = fastify
+
+    let { address } = request.query
+    address = address.toLowerCase()
+    console.log({ address })
+
+    if (!address) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'address',
+        data: {}
+      }
+    }
+
+    const stat = db
+      .prepare('SELECT address, SUM(mud) AS mud, SUM(usdt) AS usdt FROM delegate WHERE address = ? AND status = ? GROUP BY address')
+      .get(address, DelegateStatusSuccess)
+    if (!stat) {
+      return {
+        code: ErrorBusinessCode,
+        msg: ErrorBusinessMsg + `${address} not exist`,
+        data: {}
+      }
+    }
+    reply.send({
+      code: 0,
+      msg: '',
+      data: stat
+    })
+  })
+
   // 用户确认质押成功
   // curl -X POST -H "Content-Type: application/json" -d '{"hash": "0x3be4045e7a4ce7bd74bed53537ab702372944d5f1a1753bda1c669cc52e77c47"}' http://127.0.0.1:3000/confirm-delegate
   fastify.post('/confirm-delegate', async function (request, reply) {
@@ -1015,6 +1048,37 @@ export default async function (fastify, opts) {
     }
   })
 
+  // 获取动态奖励列表
+  // curl http://127.0.0.1:3000/dynamic-user-stat?address=0x00000be6819f41400225702d32d3dd23663dd690 | jq
+  fastify.get('/dynamic-user-stat', async function (request, reply) {
+    const { db } = fastify
+
+    let { address } = request.query
+    address = address.toLowerCase()
+    console.log({ address })
+
+    if (!address) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'address',
+        data: {}
+      }
+    }
+
+    const stat = { address }
+
+    const dynamic_stat = db.prepare('SELECT address, SUM(usdt) AS usdt FROM dynamic_reward WHERE address = ? GROUP BY address').get(address)
+    if (dynamic_stat) {
+      stat.usdt = stat.usdt + dynamic_stat.usdt
+    }
+
+    return {
+      code: 0,
+      msg: '',
+      data: stat
+    }
+  })
+
   // 动态静态列表
   // curl http://127.0.0.1:3000/static-rewards | jq
   fastify.get('/static-rewards', async function (request, reply) {
@@ -1037,6 +1101,45 @@ export default async function (fastify, opts) {
         items
       }
     }
+  })
+
+  // curl http://127.0.0.1:3000/reward-user-stat?address=0x00000be6819f41400225702d32d3dd23663dd690 | jq
+  fastify.get('/reward-user-stat', async function (request, reply) {
+    const { db } = fastify
+
+    let { address } = request.query
+    address = address.toLowerCase()
+    console.log({ address })
+
+    if (!address) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'address',
+        data: {}
+      }
+    }
+
+    const stat = { address, usdt: 0, mud: 0 }
+
+    const dynamic_stat = db.prepare('SELECT address, SUM(usdt) AS usdt FROM dynamic_reward WHERE address = ? GROUP BY address').get(address)
+    if (dynamic_stat) {
+      stat.usdt = stat.usdt + dynamic_stat.usdt
+    }
+
+    const static_stat = db.prepare('SELECT address, SUM(usdt) AS usdt FROM static_reward WHERE address = ? GROUP BY address').get(address)
+    if (static_stat) {
+      stat.usdt = stat.usdt + static_stat.usdt
+    }
+
+    const { buy_mud_wei } = await mudPrice()
+    const mud = parseInt((stat.usdt * TokenWei) / buy_mud_wei)
+    stat.mud = mud
+
+    reply.send({
+      code: 0,
+      msg: '',
+      data: stat
+    })
   })
 
   // 获取用户的最新奖励信息
@@ -1250,6 +1353,38 @@ export default async function (fastify, opts) {
       msg: '',
       data: claim
     }
+  })
+
+  // 获取奖励信息
+  // curl http://127.0.0.1:3000/claim-user-stat?address=0x00000be6819f41400225702d32d3dd23663dd690 | jq
+  fastify.get('/claim-user-stat', async function (request, reply) {
+    const { db } = fastify
+
+    let { address } = request.query
+    address = address.toLowerCase()
+    console.log({ address })
+
+    if (!address) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'address',
+        data: {}
+      }
+    }
+
+    const stat = db.prepare('SELECT address, SUM(mud) AS mud, SUM(usdt) AS usdt FROM claim WHERE address = ? AND status = ? GROUP BY address').get(address, ClaimStatusReceived)
+    if (!stat) {
+      return {
+        code: ErrorBusinessCode,
+        msg: ErrorBusinessMsg + ` ${address} not exist`,
+        data: {}
+      }
+    }
+    reply.send({
+      code: 0,
+      msg: '',
+      data: stat
+    })
   })
 
   // 发起领取奖励拿到交易回执之后更新奖励列表
