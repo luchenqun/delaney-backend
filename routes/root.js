@@ -1,5 +1,5 @@
 import { ethers, ZeroAddress, ZeroHash, Wallet } from 'ethers'
-import { mudPrice, pageSql, getConfigs } from '../utils/index.js'
+import { mudPrice, pageSql, getConfigs, recoverAddress } from '../utils/index.js'
 import { ErrorInputCode, ErrorInputMsg, ErrorDataNotExistCode, ErrorDataNotExistMsg, ErrorBusinessCode, ErrorBusinessMsg, TokenWei, ReceiptFail } from '../utils/constant.js'
 import { DelegateStatusDelegating, DelegateStatusSuccess, DelegateStatusFail, DelegateStatusUndelegating, DelegateStatusWithdrew } from '../utils/constant.js'
 import {
@@ -1494,6 +1494,10 @@ export default async function (fastify, opts) {
 
     // user = db.prepare('SELECT star FROM user WHERE address = ?').get(address)
     // console.log(3, { user })
+
+    console.log(
+      recoverAddress('0x8a42bf37335884c767631f2617e641eebee4780bbd058823eeb230072ad645ed037195f48fd112ea95ac220bf1fdc2bcb485468def3f2e58fc2ac732edd6bc2b1b', '1732773015313')
+    )
 
     reply.send({
       code: 0,

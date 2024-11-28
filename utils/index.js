@@ -149,3 +149,10 @@ export const getConfigs = async () => {
   }
   return config
 }
+
+// https://1.x.wagmi.sh/examples/sign-message
+export const recoverAddress = (signature, message) => {
+  const hash = ethers.hashMessage(message)
+  const signer = ethers.recoverAddress(hash, signature)
+  return signer
+}
