@@ -121,66 +121,31 @@ export const now = () => {
   return parseInt(new Date().getTime() / 1000)
 }
 
-export const getChainReceipt = async (hash, event_name, callback) => {
-  const receipt = await provider.getTransactionReceipt(hash)
-  if (!receipt) {
-    return {
-      code: ErrorBusinessCode,
-      msg: 'receipt is not exist',
-      data: {}
-    }
+export const getConfigs = async () => {
+  const configs = await delaney.getConfigs()
+  const keys = [
+    'period_duration',
+    'period_num',
+    'period_reward_ratio',
+    'person_reward_level1',
+    'person_reward_level2',
+    'person_reward_level3',
+    'person_reward_level4',
+    'person_reward_level5',
+    'team_reward_level1',
+    'team_reward_level2',
+    'team_reward_level3',
+    'team_reward_level4',
+    'team_reward_level5',
+    'preson_invest_min_usdt',
+    'preson_reward_min_usdt',
+    'team_reward_min_usdt',
+    'fee'
+  ]
+  const config = {}
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]
+    config[key] = parseInt(configs[i])
   }
-
-  // to 要等于我们的合约是为了防止别人搞个假事件作弊
-  if (receipt.to.toLowerCase() !== delaneyAddress.toLowerCase()) {
-    return {
-      code: ErrorBusinessCode,
-      msg: 'unknow error',
-      data: {}
-    }
-  }
-
-  // 处理交易失败，我们把质押额度返回给用户
-  if (receipt.status == ReceiptFail) {
-    if (callback) {
-      callback(hash)
-    }
-    return {
-      code: ErrorBusinessCode,
-      msg: 'undelegate failed',
-      data: {}
-    }
-  }
-
-  // 能不能找到事件
-  const logs = receipt.logs || []
-  let findLog = false
-  let logArgs
-  for (const log of logs) {
-    const logDescription = delaney.interface.parseLog(log)
-    if (logDescription && logDescription.name == event_name) {
-      logArgs = logDescription.args
-      findLog = true
-      break
-    }
-  }
-
-  if (!findLog) {
-    return {
-      code: ErrorBusinessCode,
-      msg: 'unknow error',
-      data: {}
-    }
-  }
-
-  const from = receipt.from.toLowerCase()
-
-  return {
-    code: 0,
-    msg: 'success...',
-    data: {
-      from,
-      logArgs
-    }
-  }
+  return config
 }

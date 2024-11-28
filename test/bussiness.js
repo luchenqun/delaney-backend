@@ -111,15 +111,12 @@ const main = async () => {
   console.log('contract delaney address = ', delaney.target)
 
   {
-    const periodDuration = await delaney.periodDuration()
     let tx
-    if (periodDuration > 60) {
-      tx = await delaney.setPeriodDuration(1) // 方便测试每个周期设为1秒
-      await tx.wait()
+    tx = await delaney.setConfig('period_duration', 1) // 方便测试每个周期设为1秒
+    await tx.wait()
 
-      tx = await delaney.setPeriodNum(2) // 方便测试设为一共2个周期
-      await tx.wait()
-    }
+    tx = await delaney.setConfig('period_num', 3) // 方便测试一共3周期
+    await tx.wait()
   }
 
   // 用户注册，我们要注册一个5层的用户列表，方便后面测试

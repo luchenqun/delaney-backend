@@ -1,5 +1,5 @@
 import { ethers, ZeroAddress, ZeroHash, Wallet } from 'ethers'
-import { mudPrice, pageSql, getChainReceipt } from '../utils/index.js'
+import { mudPrice, pageSql, getConfigs } from '../utils/index.js'
 import { ErrorInputCode, ErrorInputMsg, ErrorDataNotExistCode, ErrorDataNotExistMsg, ErrorBusinessCode, ErrorBusinessMsg, TokenWei, ReceiptFail } from '../utils/constant.js'
 import { DelegateStatusDelegating, DelegateStatusSuccess, DelegateStatusFail, DelegateStatusUndelegating, DelegateStatusWithdrew } from '../utils/constant.js'
 import {
@@ -60,17 +60,11 @@ export default async function (fastify, opts) {
   // 获取配置列表信息
   // curl http://127.0.0.1:3000/configs | jq
   fastify.get('/configs', async function (request, reply) {
-    const { db } = fastify
-    const configs = db.prepare('SELECT * FROM config').all()
-
+    const config = await getConfigs()
     return {
       code: 0,
       msg: '',
-      data: {
-        total: configs.length,
-        pages: 1,
-        items: configs
-      }
+      data: config
     }
   })
 
@@ -434,11 +428,7 @@ export default async function (fastify, opts) {
       address = user.parent
     }
 
-    const configs = db.prepare('SELECT * FROM config').all()
-    let config = {}
-    for (const cfg of configs) {
-      config[cfg.key] = cfg.value
-    }
+    const config = await getConfigs()
 
     const transaction = db.transaction(() => {
       // 质押信息更新 或者 插入(用户可能直接跟合约进行交互)
@@ -705,11 +695,7 @@ export default async function (fastify, opts) {
       address = user.parent
     }
 
-    const configs = db.prepare('SELECT * FROM config').all()
-    let config = {}
-    for (const cfg of configs) {
-      config[cfg.key] = cfg.value
-    }
+    const config = await getConfigs()
 
     const transaction = db.transaction(() => {
       // 质押信息更新
@@ -921,11 +907,7 @@ export default async function (fastify, opts) {
       address = user.parent
     }
 
-    const configs = db.prepare('SELECT * FROM config').all()
-    let config = {}
-    for (const cfg of configs) {
-      config[cfg.key] = cfg.value
-    }
+    const config = await getConfigs()
 
     const transaction = db.transaction(() => {
       console.log({ back_mud, back_min_mud, hash, cid })
