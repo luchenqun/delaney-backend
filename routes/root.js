@@ -287,7 +287,7 @@ export default async function (fastify, opts) {
       }
     }
 
-    const stat = db
+    let stat = db
       .prepare('SELECT address, SUM(mud) AS mud, SUM(usdt) AS usdt FROM delegate WHERE address = ? AND status = ? GROUP BY address')
       .get(address, DelegateStatusSuccess)
     if (!stat) {
@@ -1414,7 +1414,7 @@ export default async function (fastify, opts) {
       }
     }
 
-    const stat = db.prepare('SELECT address, SUM(mud) AS mud, SUM(usdt) AS usdt FROM claim WHERE address = ? AND status = ? GROUP BY address').get(address, ClaimStatusReceived)
+    let stat = db.prepare('SELECT address, SUM(mud) AS mud, SUM(usdt) AS usdt FROM claim WHERE address = ? AND status = ? GROUP BY address').get(address, ClaimStatusReceived)
     if (!stat) {
       stat = { address, mud: 0, usdt: 0 }
     }
