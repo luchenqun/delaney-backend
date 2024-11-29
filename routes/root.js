@@ -2,17 +2,7 @@ import { ethers, ZeroAddress, ZeroHash, Wallet } from 'ethers'
 import { mudPrice, pageSql, getConfigs, recoverAddress } from '../utils/index.js'
 import { ErrorInputCode, ErrorInputMsg, ErrorDataNotExistCode, ErrorDataNotExistMsg, ErrorBusinessCode, ErrorBusinessMsg, TokenWei, ReceiptFail } from '../utils/constant.js'
 import { DelegateStatusDelegating, DelegateStatusSuccess, DelegateStatusFail, DelegateStatusUndelegating, DelegateStatusWithdrew } from '../utils/constant.js'
-import {
-  RewardMaxDepth,
-  RewardPersonKey,
-  RewardTeamKey,
-  RewardTypePerson,
-  RewardTypeTeam,
-  RewardMaxStar,
-  RewardUnclaimed,
-  RewardClaiming,
-  RewardClaimed
-} from '../utils/constant.js'
+import { RewardMaxDepth, RewardPersonKey, RewardTeamKey, RewardTypePerson, RewardTypeTeam, RewardMaxStar, RewardUnclaim, RewardClaiming, RewardClaimed } from '../utils/constant.js'
 import { ClaimStatusReceiving, ClaimStatusReceived, ClaimStatusReceiveFailed } from '../utils/constant.js'
 import {
   MessageTypeCreateUser,
@@ -1048,9 +1038,9 @@ export default async function (fastify, opts) {
     }
   })
 
-  // 获取动态奖励列表
-  // curl http://127.0.0.1:3000/dynamic-user-stat?address=0x00000be6819f41400225702d32d3dd23663dd690 | jq
-  fastify.get('/dynamic-user-stat', async function (request, reply) {
+  // 获取动态奖励统计信息
+  // curl http://127.0.0.1:3000/dynamic-reward-user-stat?address=0x00000be6819f41400225702d32d3dd23663dd690 | jq
+  fastify.get('/dynamic-reward-user-stat', async function (request, reply) {
     const { db } = fastify
 
     let { address } = request.query
@@ -1065,12 +1055,21 @@ export default async function (fastify, opts) {
       }
     }
 
-    const stat = { address }
+    const stat = { address, claimed_usdt: 0, unclaimed_usdt: 0, unclaimed_mud: 0 }
 
-    const dynamic_stat = db.prepare('SELECT address, SUM(usdt) AS usdt FROM dynamic_reward WHERE address = ? GROUP BY address').get(address)
-    if (dynamic_stat) {
-      stat.usdt = stat.usdt + dynamic_stat.usdt
+    const dynamic_claimed = db.prepare('SELECT SUM(usdt) AS usdt FROM dynamic_reward WHERE address = ? AND status = ? GROUP BY address').get(address, RewardClaimed)
+    if (dynamic_claimed) {
+      stat.claimed_usdt = stat.claimed_usdt + dynamic_claimed.usdt
     }
+
+    const dynamic_unclaimed = db.prepare('SELECT SUM(usdt) AS usdt FROM dynamic_reward WHERE address = ? AND status = ? GROUP BY address').get(address, RewardUnclaim)
+    if (dynamic_unclaimed) {
+      stat.unclaimed_usdt = stat.unclaimed_usdt + dynamic_unclaimed.usdt
+    }
+
+    const { buy_mud_wei } = await mudPrice()
+    const mud = parseInt((stat.unclaimed_usdt * TokenWei) / buy_mud_wei)
+    stat.unclaimed_mud = mud
 
     return {
       code: 0,
@@ -1100,6 +1099,53 @@ export default async function (fastify, opts) {
         pages,
         items
       }
+    }
+  })
+
+  // 获取静态奖励统计信息
+  // curl http://127.0.0.1:3000/static-reward-user-stat?address=0x00000be6819f41400225702d32d3dd23663dd690 | jq
+  fastify.get('/static-reward-user-stat', async function (request, reply) {
+    const { db } = fastify
+
+    let { address } = request.query
+    address = address.toLowerCase()
+    console.log({ address })
+
+    if (!address) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'address',
+        data: {}
+      }
+    }
+
+    const stat = { address, claimed_usdt: 0, unclaimed_usdt: 0, unclaimed_mud: 0, locked_usdt: 0, locked_mud: 0 }
+
+    const static_claimed = db.prepare('SELECT SUM(usdt) AS usdt FROM static_reward WHERE address = ? AND status = ? GROUP BY address').get(address, RewardClaimed)
+    if (static_claimed) {
+      stat.claimed_usdt = stat.claimed_usdt + static_claimed.usdt
+    }
+
+    const static_unclaimed = db
+      .prepare(`SELECT SUM(usdt) AS usdt FROM static_reward WHERE address = ? AND status = ? AND unlock_time <= strftime('%s', 'now') GROUP BY address`)
+      .get(address, RewardUnclaim)
+    if (static_unclaimed) {
+      stat.unclaimed_usdt = stat.unclaimed_usdt + static_unclaimed.usdt
+    }
+
+    const static_locked = db.prepare(`SELECT SUM(usdt) AS usdt FROM static_reward WHERE address = ? AND unlock_time > strftime('%s', 'now') GROUP BY address`).get(address)
+    if (static_locked) {
+      stat.locked_usdt = stat.locked_usdt + static_locked.usdt
+    }
+
+    const { buy_mud_wei } = await mudPrice()
+    stat.unclaimed_mud = parseInt((stat.unclaimed_usdt * TokenWei) / buy_mud_wei)
+    stat.locked_mud = parseInt((stat.locked_usdt * TokenWei) / buy_mud_wei)
+
+    return {
+      code: 0,
+      msg: '',
+      data: stat
     }
   })
 
@@ -1170,7 +1216,7 @@ export default async function (fastify, opts) {
 
     // claim 表没有签名的待领取列表，我们得去计算
     let static_reward_ids = []
-    const static_rewards = db.prepare(`SELECT id, usdt FROM static_reward WHERE address = ? AND status = ? AND unlock_time < strftime('%s', 'now')`).all(address, RewardUnclaimed)
+    const static_rewards = db.prepare(`SELECT id, usdt FROM static_reward WHERE address = ? AND status = ? AND unlock_time < strftime('%s', 'now')`).all(address, RewardUnclaim)
     for (const reward of static_rewards) {
       const { id, usdt } = reward
       static_reward_ids.push(id)
@@ -1178,7 +1224,7 @@ export default async function (fastify, opts) {
     }
 
     let dynamic_reward_ids = []
-    const dynamic_rewards = db.prepare(`SELECT id, usdt FROM dynamic_reward WHERE address = ? AND status = ?`).all(address, RewardUnclaimed)
+    const dynamic_rewards = db.prepare(`SELECT id, usdt FROM dynamic_reward WHERE address = ? AND status = ?`).all(address, RewardUnclaim)
     for (const reward of dynamic_rewards) {
       const { id, usdt } = reward
       dynamic_reward_ids.push(id)
@@ -1240,7 +1286,7 @@ export default async function (fastify, opts) {
     if (Array.isArray(static_ids) && static_ids.length > 0) {
       const static_rewards = db
         .prepare(`SELECT usdt FROM static_reward WHERE address = ? AND status = ? AND id IN (${static_ids.map(() => '?').join(',')})`)
-        .all([address, RewardUnclaimed, ...static_ids])
+        .all([address, RewardUnclaim, ...static_ids])
 
       for (const reward of static_rewards) {
         const { usdt } = reward
@@ -1251,7 +1297,7 @@ export default async function (fastify, opts) {
     if (Array.isArray(dynamic_ids) && dynamic_ids.length > 0) {
       const dynamic_rewards = db
         .prepare(`SELECT usdt FROM dynamic_reward WHERE address = ? AND status = ? AND id IN (${dynamic_ids.map(() => '?').join(',')})`)
-        .all([address, RewardUnclaimed, ...dynamic_ids])
+        .all([address, RewardUnclaim, ...dynamic_ids])
 
       for (const reward of dynamic_rewards) {
         const { usdt } = reward

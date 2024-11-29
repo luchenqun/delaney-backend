@@ -22,7 +22,7 @@ export const RewardTypeTeam = 1
 export const RewardPersonKey = 'person_reward_level'
 export const RewardTeamKey = 'team_reward_level'
 
-export const RewardUnclaimed = 0
+export const RewardUnclaim = 0
 export const RewardClaiming = 1
 export const RewardClaimed = 2
 
