@@ -291,11 +291,7 @@ export default async function (fastify, opts) {
       .prepare('SELECT address, SUM(mud) AS mud, SUM(usdt) AS usdt FROM delegate WHERE address = ? AND status = ? GROUP BY address')
       .get(address, DelegateStatusSuccess)
     if (!stat) {
-      return {
-        code: ErrorBusinessCode,
-        msg: ErrorBusinessMsg + `${address} not exist`,
-        data: {}
-      }
+      stat = { address, mud: 0, usdt: 0 }
     }
     reply.send({
       code: 0,
@@ -1420,11 +1416,7 @@ export default async function (fastify, opts) {
 
     const stat = db.prepare('SELECT address, SUM(mud) AS mud, SUM(usdt) AS usdt FROM claim WHERE address = ? AND status = ? GROUP BY address').get(address, ClaimStatusReceived)
     if (!stat) {
-      return {
-        code: ErrorBusinessCode,
-        msg: ErrorBusinessMsg + ` ${address} not exist`,
-        data: {}
-      }
+      stat = { address, mud: 0, usdt: 0 }
     }
     reply.send({
       code: 0,
