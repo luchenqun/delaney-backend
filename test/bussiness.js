@@ -117,6 +117,15 @@ const main = async () => {
 
     tx = await delaney.setConfig('period_num', 3) // 方便测试一共3周期
     await tx.wait()
+
+    tx = await delaney.setConfig('preson_reward_min_usdt', 0) // 个人奖励阈值
+    await tx.wait()
+
+    tx = await delaney.setConfig('team_reward_min_usdt', 0) // 团队奖励阈值
+    await tx.wait()
+
+    tx = await delaney.setConfig('claim_min_usdt', 1) // 奖励领取阈值
+    await tx.wait()
   }
 
   // 用户注册，我们要注册一个5层的用户列表，方便后面测试

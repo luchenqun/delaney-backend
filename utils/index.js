@@ -140,7 +140,8 @@ export const getConfigs = async () => {
     'preson_invest_min_usdt',
     'preson_reward_min_usdt',
     'team_reward_min_usdt',
-    'fee'
+    'fee',
+    'claim_min_usdt'
   ]
   const config = {}
   for (let i = 0; i < keys.length; i++) {
