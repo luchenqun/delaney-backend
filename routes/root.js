@@ -264,6 +264,9 @@ export default async function (fastify, opts) {
         data: {}
       }
     }
+
+    delegate.delegate_time = delegate.unlock_time - delegate.period_duration * delegate.period_num
+
     reply.send({
       code: 0,
       msg: '',
@@ -287,9 +290,7 @@ export default async function (fastify, opts) {
       }
     }
 
-    let stat = db
-      .prepare('SELECT address, SUM(mud) AS mud, SUM(usdt) AS usdt FROM delegate WHERE address = ? AND status = ? GROUP BY address')
-      .get(address, DelegateStatusSuccess)
+    let stat = db.prepare('SELECT address, SUM(mud) AS mud, SUM(usdt) AS usdt FROM delegate WHERE address = ? AND status = ? GROUP BY address').get(address, DelegateStatusSuccess)
     if (!stat) {
       stat = { address, mud: 0, usdt: 0 }
     }
@@ -998,6 +999,10 @@ export default async function (fastify, opts) {
     const items = db.prepare(sql_base).all()
     const { total } = db.prepare(sql_count).get()
     const pages = Math.ceil(total / page_size)
+
+    for (const item of items) {
+      item.delegate_time = item.unlock_time - item.period_duration * item.period_num
+    }
 
     return {
       code: 0,
