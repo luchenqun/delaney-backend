@@ -12,7 +12,7 @@ const { rpc, poolAddress, mudAddress, delaneyAddress, signer } = fs.readJSONSync
 // 'https://omniscient-floral-wish.matic.quiknode.pro/c8744f4ef0f1f40210d5d68ac6170281c379b088'
 // 'http://127.0.0.1:8545'
 export { delaneyAddress, signer }
-export const provider = new ethers.JsonRpcProvider(rpc)
+export const provider = new ethers.JsonRpcProvider(rpc, undefined, { polling: true }) // https://github.com/ethers-io/ethers.js/issues/4104#issuecomment-1694486121
 export const delaneyAbi = fs.readJSONSync('./utils/delaney.json')
 export const delaney = new ethers.Contract(delaneyAddress, delaneyAbi, provider)
 
