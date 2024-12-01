@@ -145,6 +145,10 @@ export default async function (fastify, opts) {
           })
       })
 
+      delaney.on('SetConfig', (delegator, key, value) => {
+        console.log('SetConfig log', { delegator, key, value })
+      })
+
       console.log('successfully booted!')
     },
     (err) => {
