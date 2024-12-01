@@ -36,7 +36,7 @@ const main = async () => {
   const { abi: delaneyAbi, bytecode: delaneyBytecode } = delaneyArtifact
   const poolAddress = '0x60D8A47c075E7E95cd58C7C5598208F58c89242C'
   const mudAddress = '0x9922308f2d9202C0650347d06Cb2095F3dD234BE'
-  const delaneyAddress = '0x5C019eaA6F0c6219305Ee76bc1402028c4ee9cAA'
+  const delaneyAddress = '0x7edf2bB5a1714455aCE412F0c06C623461669DBA'
   const delaneyDeploy = false
 
   const rpc = 'https://testnet-rpc.mud-chain.net'
@@ -46,7 +46,7 @@ const main = async () => {
   const url = 'https://delaney-api.mud-chain.net'
   const client = axios.create({
     baseURL: url,
-    timeout: 10000
+    timeout: 30000
   })
 
   const deadline = 1832068255
@@ -158,7 +158,7 @@ const main = async () => {
 
   // 用户获取最新的奖励信息
   {
-    await sleep(18000) // 等待3秒有静态奖励产出
+    await sleep(30000) // 等待30秒有静态奖励产出
     data = decodeReply(await client.get(`/latest-claim?address=${owner.address}`))
     console.log('latest-claim', data)
 
@@ -175,7 +175,7 @@ const main = async () => {
     console.log('claim', data)
 
     // 确认领取
-    data = decodeReply(await client.post(`/confirm-claim?hash=${tx.hash}`))
+    data = decodeReply(await client.post(`/confirm-claim`, { hash: tx.hash }))
     console.log('confirm-claim', data)
   }
 
