@@ -137,42 +137,6 @@ CREATE TABLE
     create_time INTEGER NOT NULL DEFAULT (strftime ('%s', 'now'))
   );
 
--- 配置
-CREATE TABLE
-  IF NOT EXISTS config (
-    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-    key VARCHAR(42) UNIQUE NOT NULL,
-    value INT NOT NULL DEFAULT 0,
-    description VARCHAR(2048)
-  );
-
-INSERT
-OR IGNORE INTO config (key, value, description)
-VALUES
-  ('period_reward_ratio', 5, '每期奖励百分比'),
-  ('person_reward_level1', 3, '个人奖励第一层百分比'),
-  ('person_reward_level2', 4, '个人奖励第二层百分比'),
-  ('person_reward_level3', 5, '个人奖励第三层百分比'),
-  ('person_reward_level4', 6, '个人奖励第四层百分比'),
-  ('person_reward_level5', 7, '个人奖励第五层百分比'),
-  ('team_reward_level1', 3, '团队奖励第一层百分比'),
-  ('team_reward_level2', 6, '团队奖励第二层百分比'),
-  ('team_reward_level3', 9, '团队奖励第三层百分比'),
-  ('team_reward_level4', 12, '团队奖励第四层百分比'),
-  ('team_reward_level5', 15, '团队奖励第五层百分比'),
-  (
-    'preson_reward_min_usdt',
-    100000000,
-    '拿个人奖励自己需要质押的最小金额'
-  ),
-  (
-    'team_reward_min_usdt',
-    1000000000,
-    '拿团队奖励自己需要质押的最小金额'
-  ),
-  ('team_level1_sub_usdt', 500000000, '一星条件最小直推金额'),
-  ('team_level1_team_usdt', 2000000000, '一星条件最小团队金额');
-
 -- 消息
 CREATE TABLE
   IF NOT EXISTS message (
