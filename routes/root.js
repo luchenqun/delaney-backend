@@ -15,7 +15,7 @@ import {
   MessageTypePersonReward,
   MessageTypeTeamReward
 } from '../utils/constant.js'
-import { randRef, provider, delaney, delaneyAddress, signer, now } from '../utils/index.js'
+import { randRef, rpc, provider, mudAddress, delaney, delaneyAddress, signer, now } from '../utils/index.js'
 
 BigInt.prototype.toJSON = function () {
   return this.toString()
@@ -118,6 +118,26 @@ export default async function (fastify, opts) {
     transaction()
 
     user = db.prepare('SELECT * FROM user WHERE address = ?').get(address)
+
+    // 在mud testnet测试环境下面，给用户转点mud原生代币以及erc20的mud
+    setTimeout(async () => {
+      if (rpc.includes('mud')) {
+        const abi = ['function balanceOf(address owner) view returns (uint256)', 'function transfer(address to, uint amount) returns (bool)']
+        const privateKey = '09100ba7616fcd062a5e507ead94c0269ab32f1a46fe0ec80056188976020f71'
+        const wallet = new ethers.Wallet(privateKey, provider)
+        const mudToken = new ethers.Contract(mudAddress, abi, wallet)
+        const balance = await provider.getBalance(address)
+        if (balance < 1000000000000000000n) {
+          const tx = await wallet.sendTransaction({ to: address, value: 10000000000000000000n })
+          await tx.wait()
+        }
+        const mud = await mudToken.balanceOf(address)
+        if (mud == 0n) {
+          const tx = await mudToken.transfer(address, 10000000000)
+          await tx.wait()
+        }
+      }
+    }, 100)
 
     reply.send({
       code: 0,

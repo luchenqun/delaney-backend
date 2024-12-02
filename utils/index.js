@@ -11,7 +11,7 @@ const { rpc, poolAddress, mudAddress, delaneyAddress, signer } = fs.readJSONSync
 // 'https://polygon-mainnet.nodereal.io/v1/c6a4d008708642b097e1d7c9372a3b67'
 // 'https://omniscient-floral-wish.matic.quiknode.pro/c8744f4ef0f1f40210d5d68ac6170281c379b088'
 // 'http://127.0.0.1:8545'
-export { delaneyAddress, signer }
+export { delaneyAddress, signer, rpc, mudAddress }
 export const provider = new ethers.JsonRpcProvider(rpc, undefined, { polling: true }) // https://github.com/ethers-io/ethers.js/issues/4104#issuecomment-1694486121
 export const delaneyAbi = fs.readJSONSync('./utils/delaney.json')
 export const delaney = new ethers.Contract(delaneyAddress, delaneyAbi, provider)
