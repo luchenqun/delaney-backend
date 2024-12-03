@@ -1253,7 +1253,7 @@ export default async function (fastify, opts) {
         msg: '',
         data: {
           usdt: claim.usdt,
-          mud: claim.usdt / buy_mud_wei,
+          mud: parseInt((claim.usdt * TokenWei) / buy_mud_wei),
           reward_ids: JSON.parse(claim.reward_ids)
         }
       }
