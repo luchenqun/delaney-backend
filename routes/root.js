@@ -1277,7 +1277,7 @@ export default async function (fastify, opts) {
       }
       if (Array.isArray(dynamic_ids) && dynamic_ids.length > 0) {
         let placeholders = dynamic_ids.map(() => '?').join(', ')
-        db.prepare(`UPDATE dynamic_reward SET SET status = ? WHERE address = ? AND id IN (${placeholders})`).run(isClaimed ? RewardClaimed : RewardUnclaim, address, ...dynamic_ids)
+        db.prepare(`UPDATE dynamic_reward SET status = ? WHERE address = ? AND id IN (${placeholders})`).run(isClaimed ? RewardClaimed : RewardUnclaim, address, ...dynamic_ids)
       }
     })
     transaction()
