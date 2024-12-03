@@ -1616,8 +1616,8 @@ export default async function (fastify, opts) {
     const transaction = db.transaction(() => {
       if (claim) {
         db.prepare(
-          'UPDATE claim SET cid = ?, address = ?, usdt = ?, min_mud = ?, mud = ?, reward_ids = ?, status = ?, signature = ?, claim_time = ?, deadline = ? WHERE hash = ?'
-        ).run(cid, from, usdt, min_mud, mud, JSON.stringify(reward_ids), ClaimStatusReceived, signature, now(), deadline, hash)
+          'UPDATE claim SET cid = ?, address = ?, usdt = ?, min_mud = ?, mud = ?, reward_ids = ?, status = ?, hash = ?, claim_time = ?, deadline = ? WHERE signature = ?'
+        ).run(cid, from, usdt, min_mud, mud, JSON.stringify(reward_ids), ClaimStatusReceived, hash, now(), deadline, signature)
       } else {
         db.prepare('INSERT INTO claim (cid, address, usdt, min_mud, mud, reward_ids, status, signature, claim_time, deadline, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
           cid,
