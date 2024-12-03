@@ -1246,7 +1246,7 @@ export default async function (fastify, opts) {
     const { buy_mud_wei } = await mudPrice()
 
     // 如果在待签列表里面存在，我们直接返回该数据
-    const claim = db.prepare(`SELECT * FROM claim WHERE address = ? AND status = ? AND deadline < strftime('%s', 'now')`).get(address, ClaimStatusReceiving)
+    const claim = db.prepare(`SELECT * FROM claim WHERE address = ? AND status = ? AND deadline > strftime('%s', 'now')`).get(address, ClaimStatusReceiving)
     if (claim) {
       return {
         code: 0,
@@ -1320,7 +1320,7 @@ export default async function (fastify, opts) {
     // 如果在待签列表里面存在，我们直接返回该数据
     // 我们只允许后台给用户签发一条奖励信息，除非这条签名的交易信息已经过期了
     // 用户拿着这条信息再次发起领取奖励也没事，因为我们一个签名只允许领取一次奖励
-    const claim = db.prepare(`SELECT * FROM claim WHERE address = ? AND status = ? AND deadline < datetime('now')`).get(address, ClaimStatusReceiving)
+    const claim = db.prepare(`SELECT * FROM claim WHERE address = ? AND status = ? AND deadline > datetime('now')`).get(address, ClaimStatusReceiving)
     if (claim) {
       const { address, usdt, min_mud, reward_ids, signature, deadline } = claim
       return {
