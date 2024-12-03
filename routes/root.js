@@ -1235,6 +1235,60 @@ export default async function (fastify, opts) {
     })
   })
 
+  // 用户清理没有领取的奖励列表
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x00000be6819f41400225702d32d3dd23663dd690"}' http://127.0.0.1:3000/clear-claim
+  fastify.post('/clear-claim', async function (request, reply) {
+    const { db } = fastify
+    let { address } = request.body
+    if (!address) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'address',
+        data: {}
+      }
+    }
+    address = address.toLowerCase()
+
+    // 拿到过期的数据
+    const claim = db.prepare(`SELECT * FROM claim WHERE address = ? AND status = ? AND deadline < datetime('now')`).get(address, ClaimStatusReceiving)
+    if (!claim) {
+      return {
+        code: 0,
+        msg: '',
+        data: {
+          code: 0,
+          msg: 'not need clear',
+          data: {}
+        }
+      }
+    }
+
+    const { id, reward_ids, signature } = claim
+    const { static_ids, dynamic_ids } = JSON.parse(reward_ids)
+
+    const isClaimed = await delaney.signatures(signature)
+    console.log({ isClaimed })
+
+    const transaction = db.transaction(() => {
+      db.prepare('UPDATE claim SET status = ? WHERE signature = ?').run(isClaimed ? ClaimStatusReceived : ClaimStatusReceiveFailed, signature)
+      if (Array.isArray(static_ids) && static_ids.length > 0) {
+        let placeholders = static_ids.map(() => '?').join(', ')
+        db.prepare(`UPDATE static_reward SET status = ? WHERE address = ? AND id IN (${placeholders})`).run(isClaimed ? RewardClaimed : RewardUnclaim, address, ...static_ids)
+      }
+      if (Array.isArray(dynamic_ids) && dynamic_ids.length > 0) {
+        let placeholders = dynamic_ids.map(() => '?').join(', ')
+        db.prepare(`UPDATE dynamic_reward SET SET status = ? WHERE address = ? AND id IN (${placeholders})`).run(isClaimed ? RewardClaimed : RewardUnclaim, address, ...dynamic_ids)
+      }
+    })
+    transaction()
+
+    reply.send({
+      code: 0,
+      msg: 'clear claim id ' + id,
+      data: {}
+    })
+  })
+
   // 获取用户的最新奖励信息
   // curl http://127.0.0.1:3000/latest-claim?address=0x00000be6819f41400225702d32d3dd23663dd690
   fastify.get('/latest-claim', async function (request, reply) {
