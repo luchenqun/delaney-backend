@@ -249,6 +249,19 @@ export default async function (fastify, opts) {
       }
     }
 
+    // 查询交易是否已经通过直接调用合约
+    {
+      let delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
+      if (delegate) {
+        reply.send({
+          code: 0,
+          msg: 'success...',
+          data: delegate
+        })
+        return
+      }
+    }
+
     // 将质押信息插入数据库
     db.prepare('INSERT INTO delegate (address, mud, min_usdt, hash) VALUES (?, ?, ?, ?)').run(address, mud, min_usdt, hash)
     db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(address, MessageTypeDelegate, '质押', '收到质押信息')
@@ -333,6 +346,19 @@ export default async function (fastify, opts) {
         code: ErrorInputCode,
         msg: ErrorInputMsg + 'hash',
         data: {}
+      }
+    }
+
+    // 查询交易是否已经通过直接调用合约
+    {
+      let delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
+      if (delegate && delegate.status === DelegateStatusSuccess) {
+        reply.send({
+          code: 0,
+          msg: 'success...',
+          data: delegate
+        })
+        return
       }
     }
 
