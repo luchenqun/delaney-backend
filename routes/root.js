@@ -1757,6 +1757,31 @@ export default async function (fastify, opts) {
     }
   })
 
+  // 消息列表
+  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/set-message-all-read | jq
+  fastify.get('/set-message-all-read', async function (request, reply) {
+    const { db } = fastify
+    let { address } = request.body
+    address = address.toLowerCase()
+    console.log({ address })
+
+    if (!address) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'address',
+        data: {}
+      }
+    }
+
+    db.prepare('UPDATE message SET is_read = ? WHERE address = ?').run(true, address)
+
+    return {
+      code: 0,
+      msg: '',
+      data: {}
+    }
+  })
+
   // 在这里测试数据库的一些特性
   // curl -X POST -H "Content-Type: application/json" -d '{}' http://127.0.0.1:3000/db-test
   fastify.post('/db-test', async function (request, reply) {
