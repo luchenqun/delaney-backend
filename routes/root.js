@@ -1531,9 +1531,6 @@ export default async function (fastify, opts) {
     }
 
     const from = receipt.from.toLowerCase()
-
-    let claim = db.prepare('SELECT * FROM claim WHERE hash = ?').get(hash)
-
     // 处理交易失败
     let [usdt, min_mud, reward_ids, signature, deadline] = txDescription.args
     usdt = parseInt(usdt)
@@ -1541,6 +1538,9 @@ export default async function (fastify, opts) {
     reward_ids = JSON.parse(reward_ids)
     deadline = parseInt(deadline)
     console.log(txDescription.args, deadline)
+
+    let claim = db.prepare('SELECT * FROM claim WHERE signature = ?').get(signature)
+
     if (receipt.status == ReceiptFail) {
       if (claim) {
         db.prepare('UPDATE claim SET address = ?, usdt = ?, min_mud = ?, reward_ids = ?, status = ?, signature = ?, claim_time = ?, deadline = ? WHERE hash = ?').run(
