@@ -1778,7 +1778,7 @@ export default async function (fastify, opts) {
     reply.send({
       code: 0,
       msg: '',
-      data: { has_unread: !!message }
+      data: { has_unread: message ? true : false }
     })
   })
 
