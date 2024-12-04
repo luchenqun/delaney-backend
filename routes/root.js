@@ -1773,7 +1773,7 @@ export default async function (fastify, opts) {
       }
     }
 
-    const message = db.prepare('SELECT * FROM message WHERE address = ? AND is_read = ?').get(address, false)
+    const message = db.prepare('SELECT * FROM message WHERE address = ? AND is_read = ?').get(address, 0)
 
     reply.send({
       code: 0,
@@ -1798,7 +1798,7 @@ export default async function (fastify, opts) {
       }
     }
 
-    db.prepare('UPDATE message SET is_read = ? WHERE address = ?').run(true, address)
+    db.prepare('UPDATE message SET is_read = ? WHERE address = ?').run(1, address)
 
     return {
       code: 0,
