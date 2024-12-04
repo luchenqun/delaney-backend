@@ -1758,8 +1758,33 @@ export default async function (fastify, opts) {
   })
 
   // 消息列表
+  // curl http://127.0.0.1:3000/messages | jq
+  fastify.get('/has-unread-message', async function (request, reply) {
+    let { address } = request.query
+    const { db } = fastify
+    address = address.toLowerCase()
+    console.log({ address })
+
+    if (!address) {
+      return {
+        code: ErrorInputCode,
+        msg: ErrorInputMsg + 'address',
+        data: {}
+      }
+    }
+
+    const message = db.prepare('SELECT * FROM message WHERE address = ? AND is_read = ?').get(address, false)
+
+    reply.send({
+      code: 0,
+      msg: '',
+      data: { has_unread: !!message }
+    })
+  })
+
+  // 消息列表
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96"}' http://127.0.0.1:3000/set-message-all-read | jq
-  fastify.get('/set-message-all-read', async function (request, reply) {
+  fastify.post('/set-message-all-read', async function (request, reply) {
     const { db } = fastify
     let { address } = request.body
     address = address.toLowerCase()
