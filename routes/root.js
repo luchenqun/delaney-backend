@@ -234,39 +234,72 @@ export default async function (fastify, opts) {
   // 用户质押
   // TODO: 为了防止恶意插入数据，用户质押的数目超过1000条，我们只有拿到回执了我们才会插入数据
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "mud": 888888, "hash": "0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156"}' http://127.0.0.1:3000/delegate
-  fastify.post('/delegate', function (request, reply) {
-    let { address, mud, hash, min_usdt } = request.body
+  fastify.post('/delegate', async function (request, reply) {
+    let { hash } = request.body
     address = address.toLowerCase()
 
     const { db } = fastify
-    console.log({ address, mud, hash })
+    console.log({ hash })
 
-    if (!address || !mud || !hash || min_usdt == undefined) {
+    if (!hash) {
       return {
         code: ErrorInputCode,
-        msg: ErrorInputMsg + 'address or mud or hash or min_usdt',
+        msg: ErrorInputMsg + 'hash',
         data: {}
       }
     }
 
-    // 查询交易是否已经通过直接调用合约
-    {
-      let delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
-      if (delegate) {
-        reply.send({
-          code: 0,
-          msg: 'success...',
-          data: delegate
-        })
-        return
+    // 如果已经存在数据库里面了就直接返回
+    let delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
+    if (delegate) {
+      return {
+        code: 0,
+        msg: 'delegate is in database',
+        data: delegate
       }
     }
+
+    // 确保交易调用的方法就是delegate
+    const tx = await provider.getTransaction(hash)
+    if (!tx) {
+      return {
+        code: ErrorBusinessCode,
+        msg: `delegate tx ${hash} is not exist`,
+        data: {}
+      }
+    }
+
+    // 确保调用的就是 delaney 合约
+    if (tx.to.toLowerCase() !== delaneyAddress.toLowerCase()) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'tx is not call contract delaney',
+        data: {}
+      }
+    }
+
+    const txDescription = delaney.interface.parseTransaction(tx)
+    // 交易解码不出来，或者解码出来的不是delegate
+    if (!txDescription || (txDescription && txDescription.name !== 'delegate')) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'tx is not call contract delaney function delegate',
+        data: {}
+      }
+    }
+
+    const address = tx.from.toLowerCase()
+
+    // 处理交易失败
+    let [mud, min_usdt, _] = txDescription.args
+    mud = parseInt(mud)
+    min_usdt = parseInt(min_usdt)
 
     // 将质押信息插入数据库
     db.prepare('INSERT INTO delegate (address, mud, min_usdt, hash) VALUES (?, ?, ?, ?)').run(address, mud, min_usdt, hash)
     db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(address, MessageTypeDelegate, '质押', '收到质押信息')
 
-    const delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
+    delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
     reply.send({
       code: 0,
       msg: '',
@@ -350,15 +383,12 @@ export default async function (fastify, opts) {
     }
 
     // 查询交易是否已经通过直接调用合约
-    {
-      let delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
-      if (delegate && delegate.status === DelegateStatusSuccess) {
-        reply.send({
-          code: 0,
-          msg: 'success...',
-          data: delegate
-        })
-        return
+    let delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
+    if (delegate && delegate.status === DelegateStatusSuccess) {
+      return {
+        code: 0,
+        msg: 'delegate is deal',
+        data: delegate
       }
     }
 
@@ -395,7 +425,7 @@ export default async function (fastify, opts) {
 
     const from = receipt.from.toLowerCase()
 
-    let delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
+    delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
 
     // 处理交易失败
     let [mud, min_usdt, _] = txDescription.args
@@ -779,8 +809,7 @@ export default async function (fastify, opts) {
         for (let i = 0; i < RewardMaxDepth; i++) {
           const user = parents[i]
           // 个人投资额度需要大于某个数才能获取个人奖励
-          // TODO 测试阶段直接分发
-          if (user.usdt >= config['preson_reward_min_usdt'] || true) {
+          if (user.usdt >= config['preson_reward_min_usdt']) {
             const rewardUsdt = parseInt((config[RewardPersonKey + (i + 1)] * usdt) / 100)
             db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, rewardUsdt, RewardTypePerson)
           }
@@ -848,7 +877,7 @@ export default async function (fastify, opts) {
 
   // 用户取消质押
   // curl -X POST -H "Content-Type: application/json" -d '{"hash": "0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156"}' http://127.0.0.1:3000/undelegate
-  fastify.post('/undelegate', function (request, reply) {
+  fastify.post('/undelegate', async function (request, reply) {
     let { hash } = request.body
 
     const { db } = fastify
@@ -858,6 +887,35 @@ export default async function (fastify, opts) {
       return {
         code: ErrorInputCode,
         msg: ErrorInputMsg + 'hash',
+        data: {}
+      }
+    }
+
+    // 确保交易调用的方法就是undelegate
+    const tx = await provider.getTransaction(hash)
+    if (!tx) {
+      return {
+        code: ErrorBusinessCode,
+        msg: `undelegate tx ${hash} is not exist`,
+        data: {}
+      }
+    }
+
+    // 确保调用的就是 delaney 合约
+    if (tx.to.toLowerCase() !== delaneyAddress.toLowerCase()) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'tx is not call contract delaney',
+        data: {}
+      }
+    }
+
+    const txDescription = delaney.interface.parseTransaction(tx)
+    // 交易解码不出来，或者解码出来的不是delegate
+    if (!txDescription || (txDescription && txDescription.name !== 'undelegate')) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'tx is not call contract delaney function undelegate',
         data: {}
       }
     }
@@ -1478,6 +1536,35 @@ export default async function (fastify, opts) {
       }
     }
 
+    // 确保交易调用的方法就是claim
+    const tx = await provider.getTransaction(hash)
+    if (!tx) {
+      return {
+        code: ErrorBusinessCode,
+        msg: `claim tx ${hash} is not exist`,
+        data: {}
+      }
+    }
+
+    // 确保调用的就是 delaney 合约
+    if (tx.to.toLowerCase() !== delaneyAddress.toLowerCase()) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'tx is not call contract delaney',
+        data: {}
+      }
+    }
+
+    const txDescription = delaney.interface.parseTransaction(tx)
+    // 交易解码不出来，或者解码出来的不是delegate
+    if (!txDescription || (txDescription && txDescription.name !== 'claim')) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'tx is not call contract delaney function claim',
+        data: {}
+      }
+    }
+
     db.prepare('UPDATE claim SET hash = ? WHERE signature = ?').run(hash, signature)
 
     return {
@@ -1493,7 +1580,7 @@ export default async function (fastify, opts) {
     const { db } = fastify
     let { signature } = request.query
     console.log('get claim by signature', signature)
-    if (!hash) {
+    if (!signature) {
       return {
         code: ErrorInputCode,
         msg: ErrorInputMsg + 'signature',

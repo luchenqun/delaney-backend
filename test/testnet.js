@@ -130,7 +130,7 @@ const main = async () => {
   }
 
   {
-    const tx = await delaney.setConfig('period_duration', 1) // 方便测试每个周期设为1秒
+    const tx = await delaney.setConfig('period_duration', 6) // 方便测试每个周期设为6秒
     await tx.wait()
   }
 
