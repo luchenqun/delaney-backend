@@ -175,7 +175,7 @@ export default async function (fastify, opts) {
     console.log('user', user)
 
     // 完成修改星级
-    const info = db.prepare('UPDATE user SET min_star = ?, star = ? WHERE address = ?').run(star, star, address) // TODO: 本身的星级是不需要改的，测试为了方便都改了
+    const info = db.prepare('UPDATE user SET min_star = ? WHERE address = ?').run(star, address)
     console.log(info)
 
     reply.send({
