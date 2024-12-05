@@ -233,7 +233,7 @@ export default async function (fastify, opts) {
 
   // 用户质押
   // TODO: 为了防止恶意插入数据，用户质押的数目超过1000条，我们只有拿到回执了我们才会插入数据
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "mud": 888888, "hash": "0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156"}' http://127.0.0.1:3000/delegate
+  // curl -X POST -H "Content-Type: application/json" -d '{"hash": ""}' http://127.0.0.1:3000/delegate
   fastify.post('/delegate', async function (request, reply) {
     let { hash } = request.body
     const { db } = fastify
@@ -1518,7 +1518,7 @@ export default async function (fastify, opts) {
   })
 
   // 发起领取奖励拿到交易哈希之后， 将奖励信息写入数据库
-  // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "reward_ids": {"dynamic_ids":[1, 2, 6], "static_ids":[2, 8]}, "hash":"", "signature":""}' http://127.0.0.1:3000/claim
+  // curl -X POST -H "Content-Type: application/json" -d '{"hash":"", "signature":""}' http://127.0.0.1:3000/claim
   fastify.post('/claim', async function (request, reply) {
     const { db } = fastify
     let { hash, signature } = request.body
