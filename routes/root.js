@@ -236,9 +236,8 @@ export default async function (fastify, opts) {
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "mud": 888888, "hash": "0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156"}' http://127.0.0.1:3000/delegate
   fastify.post('/delegate', async function (request, reply) {
     let { hash } = request.body
-    address = address.toLowerCase()
-
     const { db } = fastify
+
     console.log({ hash })
 
     if (!hash) {
@@ -289,8 +288,6 @@ export default async function (fastify, opts) {
     }
 
     const address = tx.from.toLowerCase()
-
-    // 处理交易失败
     let [mud, min_usdt, _] = txDescription.args
     mud = parseInt(mud)
     min_usdt = parseInt(min_usdt)
@@ -1561,6 +1558,15 @@ export default async function (fastify, opts) {
       return {
         code: ErrorBusinessCode,
         msg: 'tx is not call contract delaney function claim',
+        data: {}
+      }
+    }
+
+    let [, , , tx_signature] = txDescription.args
+    if (tx_signature.toLowerCase() != signature.toLowerCase()) {
+      return {
+        code: ErrorBusinessCode,
+        msg: 'signature is wrong',
         data: {}
       }
     }

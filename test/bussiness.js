@@ -182,21 +182,22 @@ const main = async () => {
       const tx = await delaney.connect(delegator).delegate(mud, min_usdt, deadline)
 
       // 后台记录质押信息
-      data = decodeReply(await client.post('/delegate', { address: delegator.address, mud, hash: tx.hash, min_usdt }))
+      data = decodeReply(await client.post('/delegate', { hash: tx.hash }))
       console.log('delegate', data)
 
       // 等待交易上链
       await tx.wait()
 
       // 给后台确认质押金额(不去确认我们也要可以)
-      // data = decodeReply(await client.post('/confirm-delegate', { hash: tx.hash }))
-      // console.log('confirm delegate', data)
+      data = decodeReply(await client.post('/confirm-delegate', { hash: tx.hash }))
+      console.log('confirm delegate', data)
     }
   }
 
   // 用户获取最新的奖励信息
   {
-    await sleep(8000) // 等待3秒有静态奖励产出
+    await sleep(15000) // 等待3秒有静态奖励产出
+    console.log('now is', parseInt(new Date().getTime() / 1000))
     data = decodeReply(await client.get(`/latest-claim?address=${owner.address}`))
     console.log('latest-claim', data)
 
@@ -211,10 +212,9 @@ const main = async () => {
 
     data = decodeReply(await client.post('/claim', { hash: tx.hash, signature }))
     console.log('claim', data)
-    return
 
     // 确认领取
-    data = decodeReply(await client.post(`/confirm-claim?hash=${tx.hash}`))
+    data = decodeReply(await client.post(`/confirm-claim`, { hash: tx.hash }))
     console.log('confirm-claim', data)
   }
 }
@@ -222,5 +222,5 @@ const main = async () => {
 main()
   .then(() => {})
   .catch((err) => {
-    console.log('err', err)
+    console.log('err', JSON.stringify(err))
   })
