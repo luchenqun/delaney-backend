@@ -1581,7 +1581,7 @@ export default async function (fastify, opts) {
   })
 
   // 获取奖励信息
-  // curl -X GET  -H "Content-Type: application/json" http://127.0.0.1:3000/claim?hash=0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156
+  // curl -X GET  -H "Content-Type: application/json" http://127.0.0.1:3000/claim?signature=0x3e8ce44921d0e17b19307159c83db857c69c8ca005a2327b237519eecf28d4431b4a7fd3c5166443e9f61a1096fb5ff9220979a19ce17d71235dd145706256301c
   fastify.get('/claim', async function (request, reply) {
     const { db } = fastify
     let { signature } = request.query
@@ -1632,7 +1632,7 @@ export default async function (fastify, opts) {
   })
 
   // 发起领取奖励拿到交易回执之后更新奖励列表
-  // curl -X POST  -H "Content-Type: application/json"  -d '{}'  http://127.0.0.1:3000/confirm-claim?hash=0xf1b593195df5350a9346e1b14cb37deeab17183a5a2c1ddf28aa9889ca9c5156
+  // curl -X POST  -H "Content-Type: application/json"  -d '{"hash":""}'  http://127.0.0.1:3000/confirm-claim
   fastify.post('/confirm-claim', async function (request, reply) {
     const { db } = fastify
     let { hash } = request.body
@@ -1851,7 +1851,7 @@ export default async function (fastify, opts) {
   })
 
   // 消息列表
-  // curl http://127.0.0.1:3000/messages | jq
+  // curl http://127.0.0.1:3000/has-unread-message?address=0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96 | jq
   fastify.get('/has-unread-message', async function (request, reply) {
     let { address } = request.query
     const { db } = fastify
