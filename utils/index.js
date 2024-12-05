@@ -141,7 +141,9 @@ export const getConfigs = async () => {
     'preson_reward_min_usdt',
     'team_reward_min_usdt',
     'fee',
-    'claim_min_usdt'
+    'claim_min_usdt',
+    'team_level1_sub_usdt',
+    'team_level1_team_usdt'
   ]
   const config = {}
   for (let i = 0; i < keys.length; i++) {
