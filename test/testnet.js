@@ -36,7 +36,7 @@ const main = async () => {
   const { abi: delaneyAbi, bytecode: delaneyBytecode } = delaneyArtifact
   const poolAddress = '0x60D8A47c075E7E95cd58C7C5598208F58c89242C'
   const mudAddress = '0x9922308f2d9202C0650347d06Cb2095F3dD234BE'
-  const delaneyAddress = '0xda2830331B3dE0B5Dd2E4EbdF981f18d5c47018c'
+  const delaneyAddress = '0x862b96e016eE458aEeBB48F1Cc7Bdccc33bbfB8C'
   const delaneyDeploy = false
 
   const rpc = 'https://testnet-rpc.mud-chain.net'
@@ -147,7 +147,7 @@ const main = async () => {
     tx = await delaney.setConfig('team_level1_team_usdt', 1) // 成为1星的团队条件
     await tx.wait()
 
-    tx = await delaney.setConfig('claim_min_usdt', 1) // 奖励领取阈值
+    tx = await delaney.setConfig('claim_min_usdt', 1000000) // 奖励领取阈值
     await tx.wait()
   }
 
