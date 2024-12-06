@@ -1322,15 +1322,29 @@ export default async function (fastify, opts) {
     const isClaimed = await delaney.signatures(signature)
     console.log({ isClaimed })
 
+    // 如果已经领取了，那么直接返回，状态由confirm-claim进行更新
+    if (isClaimed) {
+      return {
+        code: 0,
+        msg: '',
+        data: {
+          code: 0,
+          msg: 'user has claimed',
+          data: {}
+        }
+      }
+    }
+
+    // 这里只负责更新失败的领取
     const transaction = db.transaction(() => {
-      db.prepare('UPDATE claim SET status = ? WHERE signature = ?').run(isClaimed ? ClaimStatusReceived : ClaimStatusReceiveFailed, signature)
+      db.prepare('UPDATE claim SET status = ? WHERE signature = ?').run(ClaimStatusReceiveFailed, signature)
       if (Array.isArray(static_ids) && static_ids.length > 0) {
         let placeholders = static_ids.map(() => '?').join(', ')
-        db.prepare(`UPDATE static_reward SET status = ? WHERE address = ? AND id IN (${placeholders})`).run(isClaimed ? RewardClaimed : RewardUnclaim, address, ...static_ids)
+        db.prepare(`UPDATE static_reward SET status = ? WHERE address = ? AND id IN (${placeholders})`).run(RewardUnclaim, address, ...static_ids)
       }
       if (Array.isArray(dynamic_ids) && dynamic_ids.length > 0) {
         let placeholders = dynamic_ids.map(() => '?').join(', ')
-        db.prepare(`UPDATE dynamic_reward SET status = ? WHERE address = ? AND id IN (${placeholders})`).run(isClaimed ? RewardClaimed : RewardUnclaim, address, ...dynamic_ids)
+        db.prepare(`UPDATE dynamic_reward SET status = ? WHERE address = ? AND id IN (${placeholders})`).run(RewardUnclaim, address, ...dynamic_ids)
       }
     })
     transaction()
@@ -1361,7 +1375,8 @@ export default async function (fastify, opts) {
         data: {
           usdt: claim.usdt,
           mud: parseInt((claim.usdt * TokenWei) / buy_mud_wei),
-          reward_ids: JSON.parse(claim.reward_ids)
+          reward_ids: JSON.parse(claim.reward_ids),
+          is_sign: true
         }
       }
     }
