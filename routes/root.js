@@ -548,7 +548,6 @@ export default async function (fastify, opts) {
         for (let i = 0; i < RewardMaxDepth; i++) {
           const user = parents[i]
           // 个人投资额度需要大于某个数才能获取个人奖励
-          // TODO 测试阶段直接分发
           if (user.usdt >= config['preson_reward_min_usdt']) {
             const reward_usdt = parseInt((config[RewardPersonKey + (i + 1)] * usdt) / 100)
             db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, reward_usdt, RewardTypePerson)
@@ -566,7 +565,6 @@ export default async function (fastify, opts) {
       for (let i = 0; i < parents.length; i++) {
         const user = parents[i]
         // 个人投资额度需要大于某个数才能获取团队奖励
-        // TODO 测试阶段直接分发
         const star = user.star > user.min_star ? user.star : user.min_star // 管理员可以直接更新星级
         if (star > pre_star && user.usdt >= config['team_reward_min_usdt']) {
           const cur_ratio = config[RewardTeamKey + star] // 每个星级奖励多少

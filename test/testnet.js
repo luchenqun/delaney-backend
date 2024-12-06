@@ -36,7 +36,7 @@ const main = async () => {
   const { abi: delaneyAbi, bytecode: delaneyBytecode } = delaneyArtifact
   const poolAddress = '0x60D8A47c075E7E95cd58C7C5598208F58c89242C'
   const mudAddress = '0x9922308f2d9202C0650347d06Cb2095F3dD234BE'
-  const delaneyAddress = '0x7edf2bB5a1714455aCE412F0c06C623461669DBA'
+  const delaneyAddress = '0xda2830331B3dE0B5Dd2E4EbdF981f18d5c47018c'
   const delaneyDeploy = false
 
   const rpc = 'https://testnet-rpc.mud-chain.net'
@@ -48,8 +48,6 @@ const main = async () => {
     baseURL: url,
     timeout: 30000
   })
-
-  const deadline = 1832068255
 
   let data
 
@@ -130,7 +128,26 @@ const main = async () => {
   }
 
   {
-    const tx = await delaney.setConfig('period_duration', 6) // 方便测试每个周期设为6秒
+    let tx
+    tx = await delaney.setConfig('period_duration', 30) // 方便测试每个周期设为6秒
+    await tx.wait()
+
+    tx = await delaney.setConfig('period_num', 3) // 方便测试一共3周期
+    await tx.wait()
+
+    tx = await delaney.setConfig('preson_reward_min_usdt', 0) // 个人奖励阈值
+    await tx.wait()
+
+    tx = await delaney.setConfig('team_reward_min_usdt', 0) // 团队奖励阈值
+    await tx.wait()
+
+    tx = await delaney.setConfig('team_level1_sub_usdt', 1) // 成为1星的直推条件
+    await tx.wait()
+
+    tx = await delaney.setConfig('team_level1_team_usdt', 1) // 成为1星的团队条件
+    await tx.wait()
+
+    tx = await delaney.setConfig('claim_min_usdt', 1) // 奖励领取阈值
     await tx.wait()
   }
 
@@ -141,10 +158,11 @@ const main = async () => {
       // 发送交易
       const mud = 1000 * 1000000
       const min_usdt = 1 * 1000000
+      const deadline = 1888888888
       const tx = await delaney.connect(delegator).delegate(mud, min_usdt, deadline)
 
       // 后台记录质押信息
-      data = decodeReply(await client.post('/delegate', { address: delegator.address, mud, hash: tx.hash, min_usdt }))
+      data = decodeReply(await client.post('/delegate', { hash: tx.hash }))
       console.log('delegate', data)
 
       // 等待交易上链
