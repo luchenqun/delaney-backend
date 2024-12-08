@@ -232,6 +232,41 @@ export default async function (fastify, opts) {
     }
   })
 
+  // 获取团队列表
+  // curl http://127.0.0.1:3000/teams?address=0x00000be6819f41400225702d32d3dd23663dd690 | jq
+  fastify.get('/teams', async function (request, reply) {
+    const { db } = fastify
+    let { address, page, page_size } = request.query
+    address = address.toLowerCase()
+    page = parseInt(page || 1)
+    page_size = parseInt(page_size || 10)
+    let items = []
+
+    console.log({ address }, typeof address)
+
+    let placeholders = [`'${address}'`]
+    while (placeholders.length >= 1) {
+      const users = db.prepare(`select * from user WHERE parent IN (${placeholders})`).all()
+      placeholders = []
+      if (users.length > 0) {
+        items = items.concat(users)
+        placeholders = users.map((user) => `'${user.address}'`)
+      }
+    }
+
+    const pages = Math.ceil(items.length / page_size)
+
+    return {
+      code: 0,
+      msg: '',
+      data: {
+        total: items.length,
+        pages,
+        items: items.splice((page - 1) * page_size, page * page_size)
+      }
+    }
+  })
+
   // 用户质押
   // TODO: 为了防止恶意插入数据，用户质押的数目超过1000条，我们只有拿到回执了我们才会插入数据
   // curl -X POST -H "Content-Type: application/json" -d '{"hash": ""}' http://127.0.0.1:3000/delegate
