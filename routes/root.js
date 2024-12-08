@@ -99,18 +99,19 @@ export default async function (fastify, opts) {
     const transaction = db.transaction(() => {
       // 更新上一级父级的直推人数
       db.prepare('UPDATE user SET sub_person = ? WHERE address = ?').run(parent.sub_person + 1, parent.address)
-
+      let depth = 1
       // 更新所有父级的团队人数
       let from = parent.address
       while (from !== ZeroAddress) {
         const user = db.prepare('SELECT * FROM user WHERE address = ?').get(from)
         db.prepare('UPDATE user SET team_person = ? WHERE address = ?').run(user.team_person + 1, from)
         from = user.parent
+        depth = depth + 1
       }
 
       // 完成绑定关系
       const ref = randRef() // 数据库里面已经做了ref不允许重复存在的限制。所以有一定概率注册失败，如果注册失败，让前端再重新注册一下
-      const info = db.prepare('INSERT INTO user (address, parent, ref, parent_ref) VALUES (?, ?, ?, ?)').run(address, parent.address, ref, parent_ref)
+      const info = db.prepare('INSERT INTO user (address, parent, depth, ref, parent_ref) VALUES (?, ?, ?, ?)').run(address, parent.address, depth, ref, parent_ref)
       console.log(info)
       db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(address, MessageTypeCreateUser, '注册', '账户注册成功')
     })
@@ -550,7 +551,13 @@ export default async function (fastify, opts) {
           // 个人投资额度需要大于某个数才能获取个人奖励
           if (user.usdt >= config['preson_reward_min_usdt']) {
             const reward_usdt = parseInt((config[RewardPersonKey + (i + 1)] * usdt) / 100)
-            db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, reward_usdt, RewardTypePerson)
+            db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?)').run(
+              delegate.id,
+              from,
+              user.address,
+              reward_usdt,
+              RewardTypePerson
+            )
           }
           // 没5层那就直接退出
           if (user.parent === ZeroAddress) {
@@ -570,7 +577,13 @@ export default async function (fastify, opts) {
           const cur_ratio = config[RewardTeamKey + star] // 每个星级奖励多少
           const team_ratio = cur_ratio - pre_raito // 需要扣除给手下的，实际奖励多少
           const reward_usdt = parseInt((team_ratio * usdt) / 100)
-          db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, reward_usdt, RewardTypeTeam)
+          db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?)').run(
+            delegate.id,
+            from,
+            user.address,
+            reward_usdt,
+            RewardTypeTeam
+          )
           pre_star = star
           pre_raito = cur_ratio
         }
@@ -806,7 +819,13 @@ export default async function (fastify, opts) {
           // 个人投资额度需要大于某个数才能获取个人奖励
           if (user.usdt >= config['preson_reward_min_usdt']) {
             const rewardUsdt = parseInt((config[RewardPersonKey + (i + 1)] * usdt) / 100)
-            db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, rewardUsdt, RewardTypePerson)
+            db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?)').run(
+              delegate.id,
+              from,
+              user.address,
+              rewardUsdt,
+              RewardTypePerson
+            )
           }
           // 没5层那就直接退出
           if (user.parent === ZeroAddress) {
@@ -827,7 +846,13 @@ export default async function (fastify, opts) {
           const cur_ratio = config[RewardTeamKey + star] // 每个星级奖励多少
           const team_ratio = cur_ratio - pre_raito // 需要扣除给手下的，实际奖励多少
           const reward_usdt = parseInt((team_ratio * usdt) / 100)
-          db.prepare('INSERT INTO dynamic_reward (delegate_id, address, usdt, type) VALUES (?, ?, ?, ?)').run(delegate.id, user.address, reward_usdt, RewardTypeTeam)
+          db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?)').run(
+            delegate.id,
+            from,
+            user.address,
+            reward_usdt,
+            RewardTypeTeam
+          )
           pre_star = star
           pre_raito = cur_ratio
         }

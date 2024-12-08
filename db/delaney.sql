@@ -24,6 +24,7 @@ CREATE TABLE
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     address CHAR(42) UNIQUE NOT NULL,
     parent CHAR(42) DEFAULT "",
+    depth INT NOT NULL DEFAULT 0,
     star INT NOT NULL DEFAULT 0,
     min_star INT NOT NULL DEFAULT 0,
     mud INT NOT NULL DEFAULT 0,
@@ -40,30 +41,13 @@ CREATE TABLE
   );
 
 INSERT
-OR IGNORE INTO user (
-  address,
-  parent,
-  star,
-  min_star,
-  sub_mud,
-  sub_usdt,
-  team_mud,
-  team_usdt,
-  ref,
-  parent_ref
-)
+OR IGNORE INTO user (address, parent, depth, ref)
 VALUES
   (
     '0x00000be6819f41400225702d32d3dd23663dd690',
     '0x0000000000000000000000000000000000000000',
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
+    1,
     '888888',
-    ''
   );
 
 -- 质押表
@@ -93,6 +77,7 @@ CREATE TABLE
   IF NOT EXISTS dynamic_reward (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     delegate_id INT NOT NULL,
+    delegator CHAR(42) NOT NULL,
     claim_id INT NOT NULL DEFAULT -1,
     address CHAR(42) NOT NULL,
     usdt INT NOT NULL DEFAULT 0,
