@@ -105,9 +105,21 @@ const main = async () => {
   if (needSetStar) {
     let star = 5
     let delegatorPrivateKeys = [privateKey].concat(...privateKeys)
+    const message = String(parseInt(new Date().getTime() / 1000))
+    const signature = owner.signMessageSync(message)
     for (const privateKey of delegatorPrivateKeys) {
       const delegator = new ethers.Wallet(privateKey, provider)
-      data = decodeReply(await client.post('/set-user-star', { address: delegator.address, star }))
+      data = decodeReply(
+        await client.post(
+          '/set-user-star',
+          { address: delegator.address, star },
+          {
+            headers: {
+              Authorization: message + ' ' + signature
+            }
+          }
+        )
+      )
       console.log('set user star', data)
       star -= 1
     }
