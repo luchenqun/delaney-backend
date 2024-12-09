@@ -42,18 +42,16 @@ const main = async () => {
   const provider = new ethers.JsonRpcProvider(rpc)
   provider.pollingInterval = 200
 
+  const deadline = 1832068255
+
+  const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
+  const owner = new ethers.Wallet(privateKey, provider)
+
   const url = 'http://127.0.0.1:3000'
   const client = axios.create({
     baseURL: url,
     timeout: 1000
   })
-
-  const deadline = 1832068255
-
-  let data
-
-  const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
-  const owner = new ethers.Wallet(privateKey, provider)
 
   // 一批delegator私钥列表
   const privateKeys = [
@@ -173,8 +171,7 @@ const main = async () => {
     tx = await delaney.setConfig('claim_min_usdt', 1000000) // 奖励领取阈值
     await tx.wait()
 
-    
-        // 获取配置
+    // 获取配置
     const data = decodeReply(await client.get(`/configs`))
     console.log('config: ', data)
   }
@@ -182,7 +179,7 @@ const main = async () => {
   // 用户注册，我们要注册一个5层的用户列表，方便后面测试
   console.log('--------> create user')
   let parentRefs = ['888888']
-  let needSetStar = true
+  let data
   for (let i = 0; i < delegators.length; i++) {
     try {
       // 检查用户是否已存在
@@ -199,29 +196,30 @@ const main = async () => {
 
       parentRefs.push(data.ref)
     }
-    // if (data.star > 0) {
-    //   needSetStar = false
-    // }
   }
 
   // 修改星级，为后面的奖励分配做好准备
-  //   if (needSetStar) {
-  //     for (let i = 0; i < delegators.length; i++) {
-  //       let star = 0
-  //       if (i === 0 || i === 2) {
-  //         star = 3
-  //       } else if (i === 1 || i === 4) {
-  //         star = 2
-  //       } else if (i === 3 || i === 6) {
-  //         star = 1
-  //       } else if (i === 7) {
-  //         star = 0
-  //       }
+  for (let i = 0; i < delegators.length; i++) {
+    if (i < 30) {
+      continue
+    }
 
-  //       data = decodeReply(await client.post('/set-user-star', { address: delegators[i].address, star }))
-  //       console.log('set user star', data)
-  //     }
-  //   }
+    let star = 1
+    const message = String(parseInt(new Date().getTime() / 1000))
+    const signature = owner.signMessageSync(message)
+    data = decodeReply(
+      await client.post(
+        '/set-user-star',
+        { address: delegators[i].address, star },
+        {
+          headers: {
+            Authorization: message + ' ' + signature
+          }
+        }
+      )
+    )
+    console.log('set user star', data)
+  }
 
   const delegateFunc = async (delegator) => {
     const mud = 1000 * 1000000
@@ -241,51 +239,110 @@ const main = async () => {
       data = decodeReply(await client.post('/confirm-delegate', { hash: tx.hash }))
       console.log('confirm delegate', data)
     } catch (error) {
-        console.log('delegate error: ', error)
-        return err
+      console.log('delegate error: ', error)
     }
-
-    return data
   }
 
   // owner进行质押
-  console.log('--------> owner delegate')
-  const ownerData = await delegateFunc(owner)
-  console.log('owner delegate', ownerData)
-  // 用户跟链交互进行质押
-  for (const delegator of delegators) {
-    // 发送交易
-    await delegateFunc(delegator)
-    await sleep(3*1000)
+  {
+    console.log('--------> owner delegate')
+    await delegateFunc(owner)
+    // 用户跟链交互进行质押
+    for (const delegator of delegators) {
+      // 发送交易
+      await delegateFunc(delegator)
+      await sleep(3 * 1000)
+    }
   }
 
-  //   // 用户获取最新的奖励信息
-  //   {
-  //     await sleep(15000) // 等待3秒有静态奖励产出
-  //     console.log('now is', parseInt(new Date().getTime() / 1000))
-  //     data = decodeReply(await client.get(`/latest-claim?address=${owner.address}`))
-  //     console.log('latest-claim', data)
-
-  //     const { usdt, reward_ids } = data
-  //     const min_mud = 1
-  //     data = decodeReply(await client.post('/sign-claim', { address: owner.address, usdt, min_mud, reward_ids }))
-  //     console.log('sign-claim', data)
-
-  //     const { signature, deadline } = data
-  //     const tx = await delaney.connect(owner).claim(usdt, min_mud, JSON.stringify(reward_ids), signature, deadline)
-  //     console.log('call contract claim', tx.hash)
-
-  //     data = decodeReply(await client.post('/claim', { hash: tx.hash, signature }))
-  //     console.log('claim', data)
-
-  //     // 确认领取
-  //     data = decodeReply(await client.post(`/confirm-claim`, { hash: tx.hash }))
-  //     console.log('confirm-claim', data)
-  //   }
-
+  // 获取动态奖励列表
   {
-    data = decodeReply(await client.get(`/users`))
-    console.log(data)
+    data = decodeReply(await client.get(`/dynamic-rewards?page=1&page_size=10`))
+    console.log('dynamic-rewards', data)
+
+    data = decodeReply(await client.get(`/static-rewards?page=1&page_size=10`))
+    console.log('static-rewards', data)
+
+    for (const delegator of delegators) {
+      data = decodeReply(await client.get(`/dynamic-reward-user-stat?address=${delegator.address}`))
+      console.log('dynamic-reward-user-stat', data)
+
+      data = decodeReply(await client.get(`/static-reward-user-stat?address=${delegator.address}`))
+      console.log('static-reward-user-stat', data)
+    }
+  }
+
+  // 用户获取最新的奖励信息
+  {
+    await sleep(3000) // 等待3秒有静态奖励产出
+    for (const delegator of delegators) {
+      console.log('now is', parseInt(new Date().getTime() / 1000))
+      data = decodeReply(await client.get(`/latest-claim?address=${delegator.address}`))
+      console.log('latest-claim', data)
+      if (data.usdt === 0 || (data.reward_ids.length === 0 && data.static_ids.length === 0)) {
+        continue
+      }
+
+      const { usdt, reward_ids } = data
+      const min_mud = 1
+      data = decodeReply(await client.post('/sign-claim', { address: delegator.address, usdt, min_mud, reward_ids }))
+      console.log('sign-claim', data)
+
+      const { signature, deadline } = data
+      const tx = await delaney.connect(delegator).claim(usdt, min_mud, JSON.stringify(reward_ids), signature, deadline)
+      console.log('call contract claim', tx.hash)
+
+      // 领取奖励
+      data = decodeReply(await client.post('/claim', { hash: tx.hash, signature }))
+      console.log('claim', data)
+
+      // 确认领取奖励
+      data = decodeReply(await client.post(`/confirm-claim`, { hash: tx.hash }))
+      console.log('confirm-claim', data)
+
+      data = decodeReply(await client.get(`/claim-user-stat?address=${delegator.address}`))
+      console.log('claim-user-stat', data)
+
+      data = decodeReply(await client.get(`/claim?signature=${signature}`))
+      console.log('get claim', data)
+    }
+  }
+
+  // 用户列表
+  {
+    const message = String(parseInt(new Date().getTime() / 1000))
+    const signature = owner.signMessageSync(message)
+
+    const data = decodeReply(
+      await client.get(`/users?page=1&page_size=10`, {
+        headers: {
+          Authorization: message + ' ' + signature
+        }
+      })
+    )
+    console.log('--------> users', data)
+  }
+
+  // 获取团队的列表
+  {
+    const message = String(parseInt(new Date().getTime() / 1000))
+    const signature = owner.signMessageSync(message)
+    for (const delegator of delegators) {
+      const data = decodeReply(
+        await client.get(`/teams?address=${delegator.address}&page=1&page_size=10`, {
+          headers: {
+            Authorization: message + ' ' + signature
+          }
+        })
+      )
+      console.log('--------> teams', data)
+    }
+  }
+
+  // 消息记录
+  {
+    const data = decodeReply(await client.get(`/messages?page=1&page_size=10`))
+    console.log('--------> messages', data)
   }
 }
 
