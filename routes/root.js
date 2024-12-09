@@ -707,8 +707,8 @@ export default async function (fastify, opts) {
               user.star = star
             }
           } else {
-            const row = db.prepare('SELECT COUNT(*) FROM user WHERE star >= ? AND parent = ?').get(star - 1, user.address)
-            if (row['COUNT(*)'] >= 2) {
+            const { total } = db.prepare('SELECT COUNT(*) total FROM user WHERE star >= ? AND parent = ?').get(star - 1, user.address)
+            if (total >= 2) {
               user.star = star
               break
             }
@@ -1159,8 +1159,8 @@ export default async function (fastify, opts) {
               user.star = star
             }
           } else {
-            const count = db.prepare('SELECT COUNT(*) FROM user WHERE star >= ? AND parent = ?').get(star - 1, user.address)
-            if (count >= 2) {
+            const { total } = db.prepare('SELECT COUNT(*) total FROM user WHERE star >= ? AND parent = ?').get(star - 1, user.address)
+            if (total >= 2) {
               user.star = star
               break
             }
