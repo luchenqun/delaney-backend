@@ -3,18 +3,20 @@ import bn from 'bignumber.js'
 import fs from 'fs-extra'
 import { ReceiptFail } from './constant.js'
 
-const { rpc, poolAddress, mudAddress, delaneyAddress, signer } = fs.readJSONSync('config.json')
-
+const SevenDaySeconds = 7 * 24 * 3600
+const { rpc, poolAddress, mudAddress, delaneyAddress, adminPrivateKey } = fs.readJSONSync('config.json')
+const adminWallet = new ethers.Wallet(adminPrivateKey)
 // mud '0xf6EaC236757e82D6772E8bD02D36a0c791d78C51'
 // usdt '0x5338968f9646e4a865d76e07c2a6e340dd3ac462'
 // 'https://polygon.drpc.org'
 // 'https://polygon-mainnet.nodereal.io/v1/c6a4d008708642b097e1d7c9372a3b67'
 // 'https://omniscient-floral-wish.matic.quiknode.pro/c8744f4ef0f1f40210d5d68ac6170281c379b088'
 // 'http://127.0.0.1:8545'
-export { delaneyAddress, signer, rpc, mudAddress }
+export { delaneyAddress, adminPrivateKey, rpc, mudAddress }
 export const provider = new ethers.JsonRpcProvider(rpc, undefined, { polling: true }) // https://github.com/ethers-io/ethers.js/issues/4104#issuecomment-1694486121
 export const delaneyAbi = fs.readJSONSync('./utils/delaney.json')
 export const delaney = new ethers.Contract(delaneyAddress, delaneyAbi, provider)
+export const adminAddress = adminWallet.address.toLowerCase()
 
 // 产生邀请码
 export const randRef = (len = 6) => {
@@ -153,9 +155,44 @@ export const getConfigs = async () => {
   return config
 }
 
+export const afterSeconds = (seconds) => {
+  return parseInt((new Date().getTime() / 1000).toString()) + seconds
+}
+
 // https://1.x.wagmi.sh/examples/sign-message
 export const recoverAddress = (signature, message) => {
   const hash = ethers.hashMessage(message)
   const signer = ethers.recoverAddress(hash, signature)
   return signer
+}
+
+export const authorizationCheck = (value, users) => {
+  if (!value) {
+    return { pass: false, err: 'authorization value is not exist' }
+  }
+  const [message, signature] = value.split(' ')
+  if (!message || !signature) {
+    return { pass: false, err: 'sign data timestamp or signature is not exist' }
+  }
+
+  if (!(typeof signature === 'string' && signature.length === 132)) {
+    return { pass: false, err: 'signature is wrong' }
+  }
+
+  if (Number.isInteger(Number(message)) && message.length == 10) {
+    if (parseInt(message + SevenDaySeconds) < afterSeconds(0)) {
+      return { pass: false, err: 'signature is expire' }
+    }
+    const hash = ethers.hashMessage(message)
+    const signer = ethers.recoverAddress(hash, signature)
+    console.log('recover address', signer)
+    for (const user of users) {
+      if (signer.toLowerCase() == user.toLowerCase()) {
+        return { pass: true, err: '' }
+      }
+    }
+    return { pass: false, err: 'address is not allow' }
+  } else {
+    return Promise.reject('sign data timestamp value is not number')
+  }
 }

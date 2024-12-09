@@ -1,6 +1,17 @@
 import { ethers, ZeroAddress, ZeroHash, Wallet } from 'ethers'
-import { mudPrice, pageSql, getConfigs, recoverAddress } from '../utils/index.js'
-import { ErrorInputCode, ErrorInputMsg, ErrorDataNotExistCode, ErrorDataNotExistMsg, ErrorBusinessCode, ErrorBusinessMsg, TokenWei, ReceiptFail } from '../utils/constant.js'
+import { mudPrice, pageSql, getConfigs, recoverAddress, authorizationCheck } from '../utils/index.js'
+import {
+  ErrorInputCode,
+  ErrorInputMsg,
+  ErrorDataNotExistCode,
+  ErrorDataNotExistMsg,
+  ErrorBusinessCode,
+  ErrorBusinessMsg,
+  ErrorPermissionCode,
+  ErrorPermissionMsg,
+  TokenWei,
+  ReceiptFail
+} from '../utils/constant.js'
 import { DelegateStatusDelegating, DelegateStatusSuccess, DelegateStatusFail, DelegateStatusUndelegating, DelegateStatusWithdrew } from '../utils/constant.js'
 import { RewardMaxDepth, RewardPersonKey, RewardTeamKey, RewardTypePerson, RewardTypeTeam, RewardMaxStar, RewardUnclaim, RewardClaiming, RewardClaimed } from '../utils/constant.js'
 import { ClaimStatusReceiving, ClaimStatusReceived, ClaimStatusReceiveFailed } from '../utils/constant.js'
@@ -15,7 +26,7 @@ import {
   MessageTypePersonReward,
   MessageTypeTeamReward
 } from '../utils/constant.js'
-import { randRef, rpc, provider, mudAddress, delaney, delaneyAddress, signer, now } from '../utils/index.js'
+import { randRef, rpc, provider, mudAddress, delaney, delaneyAddress, adminPrivateKey, adminAddress, now } from '../utils/index.js'
 
 BigInt.prototype.toJSON = function () {
   return this.toString()
@@ -156,6 +167,15 @@ export default async function (fastify, opts) {
     const { db } = fastify
     console.log({ address, star })
 
+    const { pass, err } = authorizationCheck(request.headers['authorization'], [adminAddress])
+    if (!pass) {
+      return {
+        code: ErrorPermissionCode,
+        msg: ErrorPermissionMsg + err,
+        data: {}
+      }
+    }
+
     if (star == undefined || !address) {
       return {
         code: ErrorInputCode,
@@ -192,6 +212,7 @@ export default async function (fastify, opts) {
     let { address } = request.query
     address = address.toLowerCase()
     const { db } = fastify
+
     const user = db.prepare('SELECT * FROM user WHERE address = ?').get(address)
     if (!user) {
       return {
@@ -212,6 +233,16 @@ export default async function (fastify, opts) {
   // SELECT * FROM user WHERE star = 1 AND team_usdt >= 100 ORDER BY usdt DESC LIMIT 10 OFFSET 0;
   fastify.get('/users', async function (request, reply) {
     const { db } = fastify
+
+    const { pass, err } = authorizationCheck(request.headers['authorization'], [adminAddress])
+    if (!pass) {
+      return {
+        code: ErrorPermissionCode,
+        msg: ErrorPermissionMsg + err,
+        data: {}
+      }
+    }
+
     let { page, page_size, sort_field, sort_order, filters } = request.query
     page = parseInt(page || 1)
     page_size = parseInt(page_size || 10)
@@ -242,7 +273,14 @@ export default async function (fastify, opts) {
     page_size = parseInt(page_size || 10)
     let items = []
 
-    console.log({ address }, typeof address)
+    const { pass, err } = authorizationCheck(request.headers['authorization'], [adminAddress, address])
+    if (!pass) {
+      return {
+        code: ErrorPermissionCode,
+        msg: ErrorPermissionMsg + err,
+        data: {}
+      }
+    }
 
     let placeholders = [`'${address}'`]
     while (placeholders.length >= 1) {
@@ -1550,7 +1588,7 @@ export default async function (fastify, opts) {
       }
     }
 
-    const wallet = new Wallet(signer)
+    const wallet = new Wallet(adminPrivateKey)
     const msgHash = ethers.solidityPackedKeccak256(['address', 'uint256', 'uint256', 'string', 'uint256'], [address, usdt, min_mud, JSON.stringify(reward_ids), deadline])
     console.log(`msgHash: ${msgHash}`)
     const messageHashBytes = ethers.getBytes(msgHash)

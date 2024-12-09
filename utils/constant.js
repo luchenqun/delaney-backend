@@ -7,6 +7,9 @@ export const ErrorDataNotExistMsg = `the data does not exist in the database: `
 export const ErrorBusinessCode = 3
 export const ErrorBusinessMsg = `business not allow: `
 
+export const ErrorPermissionCode = 4
+export const ErrorPermissionMsg = `permission check not allow: 
+
 export const DelegateStatusDelegating = 0
 export const DelegateStatusSuccess = 1
 export const DelegateStatusFail = 2
