@@ -687,6 +687,7 @@ export default async function (fastify, opts) {
       }
 
       // 上级用户信息更新：团队星级，直推以及团队的mud/usdt的更新
+      console.log('----->parent: ', parents)
       for (let i = 0; i < parents.length; i++) {
         const user = parents[i]
         // 第一个节点累计直推金额
@@ -706,14 +707,13 @@ export default async function (fastify, opts) {
               user.star = star
             }
           } else {
-            const count = db.prepare('SELECT COUNT(*) FROM user WHERE star >= ? AND parent = ?').get(star - 1, user.address)
-            if (count >= 2) {
+            const row = db.prepare('SELECT COUNT(*) FROM user WHERE star >= ? AND parent = ?').get(star - 1, user.address)
+            if (row['COUNT(*)'] >= 2) {
               user.star = star
               break
             }
           }
         }
-
         // 更新用户信息
         const { sub_mud, sub_usdt, team_mud, team_usdt, star, address } = user
         db.prepare('UPDATE user SET sub_mud = ?, sub_usdt = ?, team_mud = ?, team_usdt = ?, star = ? WHERE address = ?').run(sub_mud, sub_usdt, team_mud, team_usdt, star, address)
