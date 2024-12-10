@@ -1,5 +1,6 @@
 import { ethers, ZeroAddress, ZeroHash, Wallet } from 'ethers'
-import { mudPrice, pageSql, getConfigs, recoverAddress, authorizationCheck } from '../utils/index.js'
+import dayjs from 'dayjs'
+import { mudPrice, pageSql, getConfigs, recoverAddress, authorizationCheck, humanReadable } from '../utils/index.js'
 import {
   ErrorInputCode,
   ErrorInputMsg,
@@ -24,7 +25,10 @@ import {
   MessageTypeClaim,
   MessageTypeConfirmClaim,
   MessageTypePersonReward,
-  MessageTypeTeamReward
+  MessageTypeTeamReward,
+  MessageTypeSetUserStar,
+  MessageTypeStaticReward,
+  MessageTypeRiseStar
 } from '../utils/constant.js'
 import { randRef, rpc, provider, mudAddress, delaney, delaneyAddress, signerPrivateKey, signerAddress, now, adminAddressList } from '../utils/index.js'
 
@@ -173,7 +177,7 @@ export default async function (fastify, opts) {
       const ref = randRef() // 数据库里面已经做了ref不允许重复存在的限制。所以有一定概率注册失败，如果注册失败，让前端再重新注册一下
       const info = db.prepare('INSERT INTO user (address, parent, depth, ref, parent_ref) VALUES (?, ?, ?, ?, ?)').run(address, parent.address, depth, ref, parent_ref)
       console.log(info)
-      db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(address, MessageTypeCreateUser, '注册', '账户注册成功')
+      db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(address, MessageTypeCreateUser, '注册', `你的账号${address}已注册成功！`)
     })
 
     transaction()
@@ -216,7 +220,7 @@ export default async function (fastify, opts) {
     const { db } = fastify
     console.log({ address, star })
 
-    const { pass, err } = authorizationCheck(request.headers['authorization'], [signerAddress, ...adminAddressList])
+    const { pass, err, address: signer } = authorizationCheck(request.headers['authorization'], [signerAddress, ...adminAddressList])
     if (!pass) {
       return {
         code: ErrorPermissionCode,
@@ -245,8 +249,13 @@ export default async function (fastify, opts) {
     console.log('user', user)
 
     // 完成修改星级
-    const info = db.prepare('UPDATE user SET min_star = ? WHERE address = ?').run(star, address)
-    console.log(info)
+    db.prepare('UPDATE user SET min_star = ? WHERE address = ?').run(star, address)
+    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+      signer,
+      MessageTypeSetUserStar,
+      '修改星级',
+      `已将用户 ${address} 的星级修改为 ${star} 星`
+    )
 
     reply.send({
       code: 0,
@@ -419,7 +428,12 @@ export default async function (fastify, opts) {
 
     // 将质押信息插入数据库
     db.prepare('INSERT INTO delegate (address, mud, min_usdt, hash) VALUES (?, ?, ?, ?)').run(address, mud, min_usdt, hash)
-    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(address, MessageTypeDelegate, '质押', '收到质押信息')
+    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+      address,
+      MessageTypeDelegate,
+      '质押',
+      `你质押了${humanReadable(mud)}MUD，交易哈希为${hash}，等待上链...`
+    )
 
     delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
     reply.send({
@@ -554,6 +568,12 @@ export default async function (fastify, opts) {
     mud = parseInt(mud)
     min_usdt = parseInt(min_usdt)
     if (receipt.status == ReceiptFail) {
+      db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+        from,
+        MessageTypeConfirmDelegate,
+        '质押',
+        `您质押的${humanReadable(mud)}MUD交易失败，交易哈希为${hash}`
+      )
       if (delegate) {
         db.prepare('UPDATE delegate SET address = ?, mud = ?, min_usdt = ?, status = ? WHERE hash = ?').run(from, mud, min_usdt, DelegateStatusFail, hash)
       } else {
@@ -682,6 +702,12 @@ export default async function (fastify, opts) {
               reward_usdt,
               RewardTypePerson
             )
+            db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+              user.address,
+              MessageTypePersonReward,
+              '奖励',
+              `恭喜您收到了来自${from}质押${humanReadable(mud)}MUD获得的${humanReadable(reward_usdt)}USDT的个人奖励`
+            )
           }
           // 没5层那就直接退出
           if (user.parent === ZeroAddress) {
@@ -707,6 +733,12 @@ export default async function (fastify, opts) {
             user.address,
             reward_usdt,
             RewardTypeTeam
+          )
+          db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+            user.address,
+            MessageTypeTeamReward,
+            '奖励',
+            `恭喜您收到了来自${from}质押${humanReadable(mud)}MUD获得的${humanReadable(reward_usdt)}USDT的团队奖励`
           )
           pre_star = star
           pre_raito = cur_ratio
@@ -735,6 +767,12 @@ export default async function (fastify, opts) {
           reward_usdt,
           reward_unlock_time
         )
+        db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+          from,
+          MessageTypeStaticReward,
+          '奖励',
+          `恭喜您质押${humanReadable(mud)}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt)}USDT，解锁时间为 ${dayjs.unix(x).format('YYYY-MM-DD HH:mm:ss')}`
+        )
       }
 
       // 上级用户信息更新：团队星级，直推以及团队的mud/usdt的更新
@@ -752,6 +790,7 @@ export default async function (fastify, opts) {
         user.team_usdt += usdt
 
         // 从最大的星级开始查看用户是否满足星级条件
+        user.pre_star = user.star
         for (let star = RewardMaxStar; star >= 1; star--) {
           if (star == 1) {
             if (user.sub_usdt >= config['team_level1_sub_usdt'] && user.team_usdt >= config['team_level1_team_usdt']) {
@@ -795,14 +834,28 @@ export default async function (fastify, opts) {
       }
 
       for (const user of parents) {
-        const { sub_mud, sub_usdt, team_mud, team_usdt, star, address } = user
+        const { sub_mud, sub_usdt, team_mud, team_usdt, pre_star, star, address } = user
         db.prepare('UPDATE user SET sub_mud = ?, sub_usdt = ?, team_mud = ?, team_usdt = ?, star = ? WHERE address = ?').run(sub_mud, sub_usdt, team_mud, team_usdt, star, address)
+        if (star > pre_star) {
+          db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+            address,
+            MessageTypeRiseStar,
+            '升级',
+            `由于${from}质押${humanReadable(mud)}MUD，恭喜您从${pre_star}星升级为${star}星`
+          )
+        }
       }
     })
 
     transaction()
 
     db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(delegate.address, MessageTypeDelegate, '质押', '质押成功')
+    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+      delegate.address,
+      MessageTypeConfirmDelegate,
+      '质押',
+      `您成功质押了${humanReadable(mud)}MUD，交易哈希为${hash}`
+    )
 
     delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
 

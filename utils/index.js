@@ -166,6 +166,16 @@ export const recoverAddress = (signature, message) => {
   return signer
 }
 
+export const humanReadable = (value, precision = 1000000n) => {
+  value = BigInt(value)
+  precision = precision || 1000000n
+  const result = ((value * 100n) / precision).toString() // 将结果扩大100倍以保留两位小数
+  const integerPart = result.slice(0, -2) || '0' // 获取整数部分
+  const decimalPart = result.slice(-2) // 获取小数部分
+
+  return decimalPart === '00' ? integerPart : `${integerPart}.${decimalPart}`
+}
+
 export const authorizationCheck = (value, users) => {
   if (!value) {
     return { pass: false, err: 'authorization value is not exist' }
@@ -188,7 +198,7 @@ export const authorizationCheck = (value, users) => {
     console.log('recover address', signer)
     for (const user of users) {
       if (signer.toLowerCase() == user.toLowerCase()) {
-        return { pass: true, err: '' }
+        return { pass: true, err: '', address }
       }
     }
     return { pass: false, err: 'address is not allow' }
