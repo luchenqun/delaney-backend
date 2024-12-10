@@ -283,6 +283,7 @@ export default async function (fastify, opts) {
   fastify.get('/users', async function (request, reply) {
     const { db } = fastify
 
+    /*
     const { pass, err } = authorizationCheck(request.headers['authorization'], [signerAddress, ...adminAddressList])
     if (!pass) {
       return {
@@ -291,6 +292,7 @@ export default async function (fastify, opts) {
         data: {}
       }
     }
+    */
 
     let { page, page_size, sort_field, sort_order, filters } = request.query
     page = parseInt(page || 1)
@@ -322,7 +324,7 @@ export default async function (fastify, opts) {
     page_size = parseInt(page_size || 10)
     let items = []
 
-    const { pass, err } = authorizationCheck(request.headers['authorization'], [signerAddress, address, ...adminAddressList])
+    const { pass, err } = authorizationCheck(request.headers['authorization'], [adminAddress, address])
     if (!pass) {
       return {
         code: ErrorPermissionCode,
@@ -736,6 +738,7 @@ export default async function (fastify, opts) {
       }
 
       // 上级用户信息更新：团队星级，直推以及团队的mud/usdt的更新
+      console.log('----->parent: ', parents)
       for (let i = 0; i < parents.length; i++) {
         const user = parents[i]
         // 第一个节点累计直推金额
@@ -755,14 +758,13 @@ export default async function (fastify, opts) {
               user.star = star
             }
           } else {
-            const count = db.prepare('SELECT COUNT(*) FROM user WHERE star >= ? AND parent = ?').get(star - 1, user.address)
-            if (count >= 2) {
+            const { total } = db.prepare('SELECT COUNT(*) total FROM user WHERE star >= ? AND parent = ?').get(star - 1, user.address)
+            if (total >= 2) {
               user.star = star
               break
             }
           }
         }
-
         // 更新用户信息
         const { sub_mud, sub_usdt, team_mud, team_usdt, star, address } = user
         db.prepare('UPDATE user SET sub_mud = ?, sub_usdt = ?, team_mud = ?, team_usdt = ?, star = ? WHERE address = ?').run(sub_mud, sub_usdt, team_mud, team_usdt, star, address)
@@ -1208,8 +1210,8 @@ export default async function (fastify, opts) {
               user.star = star
             }
           } else {
-            const count = db.prepare('SELECT COUNT(*) FROM user WHERE star >= ? AND parent = ?').get(star - 1, user.address)
-            if (count >= 2) {
+            const { total } = db.prepare('SELECT COUNT(*) total FROM user WHERE star >= ? AND parent = ?').get(star - 1, user.address)
+            if (total >= 2) {
               user.star = star
               break
             }
