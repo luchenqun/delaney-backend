@@ -26,7 +26,7 @@ import {
   MessageTypePersonReward,
   MessageTypeTeamReward
 } from '../utils/constant.js'
-import { randRef, rpc, provider, mudAddress, delaney, delaneyAddress, adminPrivateKey, adminAddress, now } from '../utils/index.js'
+import { randRef, rpc, provider, mudAddress, delaney, delaneyAddress, signerPrivateKey, signerAddress, now, adminAddressList } from '../utils/index.js'
 
 BigInt.prototype.toJSON = function () {
   return this.toString()
@@ -66,6 +66,55 @@ export default async function (fastify, opts) {
       code: 0,
       msg: '',
       data: config
+    }
+  })
+
+  // 获取管理员列表信息
+  // curl http://127.0.0.1:3000/is-admin?address=0x00000Be6819f41400225702D32d3dd23663Dd690 | jq
+  fastify.get('/is-admin', async function (request, reply) {
+    let { address } = request.query
+    const admin = (address || '').toLowerCase()
+
+    let find = false
+    const addressList = [signerAddress, ...adminAddressList]
+    for (const address of addressList) {
+      if (address.toLowerCase() == admin.toLowerCase()) {
+        find = true
+        break
+      }
+    }
+
+    return {
+      code: 0,
+      msg: '',
+      data: { find }
+    }
+  })
+
+  // 获取管理员列表信息
+  // curl http://127.0.0.1:3000/admins | jq
+  fastify.get('/admins', async function (request, reply) {
+    const { pass, err } = authorizationCheck(request.headers['authorization'], [signerAddress, ...adminAddressList])
+    if (!pass) {
+      return {
+        code: ErrorPermissionCode,
+        msg: ErrorPermissionMsg + err,
+        data: {}
+      }
+    }
+
+    let find = false
+    for (const address of adminAddressList) {
+      if (address.toLowerCase() == signerAddress.toLowerCase()) {
+        find = true
+        break
+      }
+    }
+
+    return {
+      code: 0,
+      msg: '',
+      data: find ? [...adminAddressList] : [signerAddress, ...adminAddressList]
     }
   })
 
@@ -167,7 +216,7 @@ export default async function (fastify, opts) {
     const { db } = fastify
     console.log({ address, star })
 
-    const { pass, err } = authorizationCheck(request.headers['authorization'], [adminAddress])
+    const { pass, err } = authorizationCheck(request.headers['authorization'], [signerAddress, ...adminAddressList])
     if (!pass) {
       return {
         code: ErrorPermissionCode,
@@ -202,7 +251,7 @@ export default async function (fastify, opts) {
     reply.send({
       code: 0,
       msg: '',
-      data: Object.assign(user, { star, min_star: star })
+      data: Object.assign(user, { min_star: star })
     })
   })
 
@@ -234,7 +283,7 @@ export default async function (fastify, opts) {
   fastify.get('/users', async function (request, reply) {
     const { db } = fastify
 
-    const { pass, err } = authorizationCheck(request.headers['authorization'], [adminAddress])
+    const { pass, err } = authorizationCheck(request.headers['authorization'], [signerAddress, ...adminAddressList])
     if (!pass) {
       return {
         code: ErrorPermissionCode,
@@ -273,7 +322,7 @@ export default async function (fastify, opts) {
     page_size = parseInt(page_size || 10)
     let items = []
 
-    const { pass, err } = authorizationCheck(request.headers['authorization'], [adminAddress, address])
+    const { pass, err } = authorizationCheck(request.headers['authorization'], [signerAddress, address, ...adminAddressList])
     if (!pass) {
       return {
         code: ErrorPermissionCode,
@@ -1588,7 +1637,7 @@ export default async function (fastify, opts) {
       }
     }
 
-    const wallet = new Wallet(adminPrivateKey)
+    const wallet = new Wallet(signerPrivateKey)
     const msgHash = ethers.solidityPackedKeccak256(['address', 'uint256', 'uint256', 'string', 'uint256'], [address, usdt, min_mud, JSON.stringify(reward_ids), deadline])
     console.log(`msgHash: ${msgHash}`)
     const messageHashBytes = ethers.getBytes(msgHash)
