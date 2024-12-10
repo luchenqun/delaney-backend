@@ -324,7 +324,7 @@ export default async function (fastify, opts) {
     page_size = parseInt(page_size || 10)
     let items = []
 
-    const { pass, err } = authorizationCheck(request.headers['authorization'], [adminAddress, address])
+    const { pass, err } = authorizationCheck(request.headers['authorization'], [...adminAddressList, signerAddress, address])
     if (!pass) {
       return {
         code: ErrorPermissionCode,
