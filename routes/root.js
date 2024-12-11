@@ -212,7 +212,6 @@ export default async function (fastify, opts) {
   })
 
   // 更新用户星级
-  // TODO: 只允许管理员可设置
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "star": "5"}' http://127.0.0.1:3000/set-user-star | jq
   fastify.post('/set-user-star', function (request, reply) {
     let { address, star } = request.body
@@ -246,7 +245,6 @@ export default async function (fastify, opts) {
         data: {}
       }
     }
-    console.log('user', user)
 
     // 完成修改星级
     db.prepare('UPDATE user SET min_star = ? WHERE address = ?').run(star, address)
@@ -255,6 +253,13 @@ export default async function (fastify, opts) {
       MessageTypeSetUserStar,
       '修改星级',
       `已将用户 ${address} 的星级修改为 ${star} 星`
+    )
+    const cur_star = star > user.star ? star : user.star
+    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+      address,
+      MessageTypeSetUserStar,
+      '星级更新',
+      `管理员已将您的星级修改为${star}星，生效的星级为${cur_star}星`
     )
 
     reply.send({
@@ -366,7 +371,6 @@ export default async function (fastify, opts) {
   })
 
   // 用户质押
-  // TODO: 为了防止恶意插入数据，用户质押的数目超过1000条，我们只有拿到回执了我们才会插入数据
   // curl -X POST -H "Content-Type: application/json" -d '{"hash": ""}' http://127.0.0.1:3000/delegate
   fastify.post('/delegate', async function (request, reply) {
     let { hash } = request.body
@@ -912,21 +916,27 @@ export default async function (fastify, opts) {
     }
 
     const from = receipt.from.toLowerCase()
-    const [cid, mud] = txDescription.args
+    const [cid, deadline] = txDescription.args
+    let { usdt, periodDuration, periodNum, unlockTime, withdrew, mud } = (await delaney.delegations(cid)).toObject(true)
+    usdt = parseInt(usdt)
+    const period_duration = parseInt(periodDuration)
+    const period_num = parseInt(periodNum)
+    const unlock_time = parseInt(unlockTime)
+
     // 交易失败什么也不需要做
     if (receipt.status == ReceiptFail) {
+      db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+        from,
+        MessageTypeConfirmDelegate,
+        '复投',
+        `您复投的${humanReadable(mud)}MUD交易失败，交易哈希为${hash}`
+      )
       return {
         code: ErrorBusinessCode,
         msg: 'redelegate failed',
         data: {}
       }
     }
-
-    let { usdt, periodDuration, periodNum, unlockTime, withdrew } = (await delaney.delegations(cid)).toObject(true)
-    usdt = parseInt(usdt)
-    const period_duration = parseInt(periodDuration)
-    const period_num = parseInt(periodNum)
-    const unlock_time = parseInt(unlockTime)
 
     // 如果已经取消质押了，那么不再分发奖励
     if (withdrew) {
@@ -994,13 +1004,19 @@ export default async function (fastify, opts) {
           const user = parents[i]
           // 个人投资额度需要大于某个数才能获取个人奖励
           if (user.usdt >= config['preson_reward_min_usdt']) {
-            const rewardUsdt = parseInt((config[RewardPersonKey + (i + 1)] * usdt) / 100)
+            const reward_usdt = parseInt((config[RewardPersonKey + (i + 1)] * usdt) / 100)
             db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?, ?)').run(
               delegate.id,
               from,
               user.address,
-              rewardUsdt,
+              reward_usdt,
               RewardTypePerson
+            )
+            db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+              user.address,
+              MessageTypePersonReward,
+              '奖励',
+              `恭喜您收到了来自${from}复投${humanReadable(mud)}MUD获得的${humanReadable(reward_usdt)}USDT的个人奖励`
             )
           }
           // 没5层那就直接退出
@@ -1016,9 +1032,8 @@ export default async function (fastify, opts) {
       for (let i = 0; i < parents.length; i++) {
         const user = parents[i]
         // 个人投资额度需要大于某个数才能获取团队奖励
-        // TODO 测试阶段直接分发
         const star = user.star > user.min_star ? user.star : user.min_star // 管理员可以直接更新星级
-        if ((star > pre_star && user.usdt >= config['team_reward_min_usdt']) || true) {
+        if (star > pre_star && user.usdt >= config['team_reward_min_usdt']) {
           const cur_ratio = config[RewardTeamKey + star] // 每个星级奖励多少
           const team_ratio = cur_ratio - pre_raito // 需要扣除给手下的，实际奖励多少
           const reward_usdt = parseInt((team_ratio * usdt) / 100)
@@ -1028,6 +1043,12 @@ export default async function (fastify, opts) {
             user.address,
             reward_usdt,
             RewardTypeTeam
+          )
+          db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+            user.address,
+            MessageTypeTeamReward,
+            '奖励',
+            `恭喜您收到了来自${from}复投${humanReadable(mud)}MUD获得的${humanReadable(reward_usdt)}USDT的团队奖励`
           )
           pre_star = star
           pre_raito = cur_ratio
@@ -1055,6 +1076,12 @@ export default async function (fastify, opts) {
           from,
           reward_usdt,
           reward_unlock_time
+        )
+        db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+          from,
+          MessageTypeStaticReward,
+          '奖励',
+          `恭喜您复投${humanReadable(mud)}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt)}USDT，解锁时间为 ${dayjs.unix(x).format('YYYY-MM-DD HH:mm:ss')}`
         )
       }
     })
@@ -1125,6 +1152,12 @@ export default async function (fastify, opts) {
     db.prepare('UPDATE delegate SET status = ? WHERE undelegate_hash = ?').run(DelegateStatusUndelegating, hash)
 
     const delegate = db.prepare('SELECT * FROM delegate WHERE undelegate_hash = ?').get(hash)
+    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+      delegate.address,
+      MessageTypeUndelegate,
+      '取回质押',
+      `你取回了${humanReadable(delegate.mud)}MUD，交易哈希为${hash}，等待上链...`
+    )
 
     reply.send({
       code: 0,
@@ -1261,6 +1294,7 @@ export default async function (fastify, opts) {
         user.team_mud -= mud
         user.team_usdt -= usdt
 
+        user.pre_star = user.star
         for (let star = RewardMaxStar; star >= 1; star--) {
           if (star == 1) {
             if (user.sub_usdt >= config['team_level1_sub_usdt'] && user.team_usdt >= config['team_level1_team_usdt']) {
@@ -1276,14 +1310,28 @@ export default async function (fastify, opts) {
         }
 
         // 更新用户信息
-        const { sub_mud, sub_usdt, team_mud, team_usdt, star, address } = user
+        const { sub_mud, sub_usdt, team_mud, team_usdt, pre_star, star, address } = user
         db.prepare('UPDATE user SET sub_mud = ?, sub_usdt = ?, team_mud = ?, team_usdt = ?, star = ? WHERE address = ?').run(sub_mud, sub_usdt, team_mud, team_usdt, star, address)
+        if (star < pre_star) {
+          db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+            address,
+            MessageTypeRiseStar,
+            '降级',
+            `由于${from}取回质押${humanReadable(mud)}MUD，您从${pre_star}星降级为${star}星`
+          )
+        }
       }
     })
 
     transaction()
 
     delegate = db.prepare('SELECT * FROM delegate WHERE cid = ?').get(cid)
+    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+      delegate.address,
+      MessageTypeConfirmUndelegate,
+      '取回质押',
+      `您成功取回了质押的${humanReadable(mud)}MUD，实际返回 ${humanReadable(back_mud)}MUD，交易哈希为${hash}`
+    )
 
     reply.send({
       code: 0,
@@ -1729,6 +1777,13 @@ export default async function (fastify, opts) {
     })
     transaction()
 
+    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+      address,
+      MessageTypeClaim,
+      '奖励领取',
+      `系统给你签发了一条奖励${humanReadable(usdt)}USDT的奖励，请尽快领取`
+    )
+
     reply.send({
       code: 0,
       msg: '',
@@ -1791,6 +1846,13 @@ export default async function (fastify, opts) {
     }
 
     db.prepare('UPDATE claim SET hash = ? WHERE signature = ?').run(hash, signature)
+
+    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+      claim.address,
+      MessageTypeClaim,
+      '奖励领取',
+      `您正在领取${humanReadable(claim.usdt)}USDT的奖励，交易哈希为${hash}，等待上链...`
+    )
 
     return {
       code: 0,
@@ -1911,7 +1973,7 @@ export default async function (fastify, opts) {
       db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
         from,
         MessageTypeConfirmClaim,
-        '领取',
+        '奖励领取',
         `您领取的${humanReadable(claim.mud)}MUD交易失败，交易哈希为${hash}`
       )
       if (claim) {
@@ -2007,8 +2069,8 @@ export default async function (fastify, opts) {
         db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
           from,
           MessageTypeConfirmClaim,
-          '领取',
-          `恭喜您成功领取了${humanReadable(mud)}MUD，交易哈希为${hash}`
+          '奖励领取',
+          `恭喜您成功领取了${humanReadable(mud)}MUD，对应价值为${humanReadable(usdt)}USDT，交易哈希为${hash}`
         )
       }
 
