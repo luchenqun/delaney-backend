@@ -177,7 +177,7 @@ export default async function (fastify, opts) {
       const ref = randRef() // 数据库里面已经做了ref不允许重复存在的限制。所以有一定概率注册失败，如果注册失败，让前端再重新注册一下
       const info = db.prepare('INSERT INTO user (address, parent, depth, ref, parent_ref) VALUES (?, ?, ?, ?, ?)').run(address, parent.address, depth, ref, parent_ref)
       console.log(info)
-      db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(address, MessageTypeCreateUser, '注册', `你的账号${address}已注册成功！`)
+      db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(address, MessageTypeCreateUser, '注册', `您的账号${address}已注册成功！`)
     })
 
     transaction()
@@ -237,11 +237,11 @@ export default async function (fastify, opts) {
     }
 
     // 检查用户是否存在
-    const user = db.prepare('SELECT address FROM user WHERE address = ?').get(address)
+    const user = db.prepare('SELECT * FROM user WHERE address = ?').get(address)
     if (!user) {
       return {
         code: ErrorDataNotExistCode,
-        msg: ErrorDataNotExistMsg + `no user corresponding to this ref ${parent_ref}`,
+        msg: ErrorDataNotExistMsg + `no user corresponding to this address ${address}`,
         data: {}
       }
     }
@@ -259,7 +259,7 @@ export default async function (fastify, opts) {
       address,
       MessageTypeSetUserStar,
       '星级更新',
-      `管理员已将您的星级修改为${star}星，生效的星级为${cur_star}星`
+      `管理员已将您的星级修改为${star}星，您目前星级为${cur_star}星`
     )
 
     reply.send({
@@ -436,7 +436,7 @@ export default async function (fastify, opts) {
       address,
       MessageTypeDelegate,
       '质押',
-      `你质押了${humanReadable(mud)}MUD，交易哈希为${hash}，等待上链...`
+      `您质押了${humanReadable(mud)}MUD，交易哈希为${hash}，等待上链...`
     )
 
     delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
@@ -775,7 +775,9 @@ export default async function (fastify, opts) {
           from,
           MessageTypeStaticReward,
           '奖励',
-          `恭喜您质押${humanReadable(mud)}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt)}USDT，解锁时间为 ${dayjs.unix(x).format('YYYY-MM-DD HH:mm:ss')}`
+          `恭喜您质押${humanReadable(mud)}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt)}USDT，解锁时间为 ${dayjs
+            .unix(reward_unlock_time)
+            .format('YYYY-MM-DD HH:mm:ss')}`
         )
       }
 
@@ -1081,7 +1083,9 @@ export default async function (fastify, opts) {
           from,
           MessageTypeStaticReward,
           '奖励',
-          `恭喜您复投${humanReadable(mud)}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt)}USDT，解锁时间为 ${dayjs.unix(x).format('YYYY-MM-DD HH:mm:ss')}`
+          `恭喜您复投${humanReadable(mud)}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt)}USDT，解锁时间为 ${dayjs
+            .unix(reward_unlock_time)
+            .format('YYYY-MM-DD HH:mm:ss')}`
         )
       }
     })
@@ -1148,15 +1152,17 @@ export default async function (fastify, opts) {
       }
     }
 
-    // 将质押信息更新到数据库
-    db.prepare('UPDATE delegate SET status = ? WHERE undelegate_hash = ?').run(DelegateStatusUndelegating, hash)
+    const [cid, ,] = txDescription.args
 
-    const delegate = db.prepare('SELECT * FROM delegate WHERE undelegate_hash = ?').get(hash)
+    // 将质押信息更新到数据库
+    db.prepare('UPDATE delegate SET status = ?, undelegate_hash = ? WHERE cid = ?').run(DelegateStatusUndelegating, hash, cid)
+
+    const delegate = db.prepare('SELECT * FROM delegate WHERE cid = ?').get(cid)
     db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
       delegate.address,
       MessageTypeUndelegate,
       '取回质押',
-      `你取回了${humanReadable(delegate.mud)}MUD，交易哈希为${hash}，等待上链...`
+      `您取回了${humanReadable(delegate.mud)}MUD，交易哈希为${hash}，等待上链...`
     )
 
     reply.send({
@@ -1781,7 +1787,7 @@ export default async function (fastify, opts) {
       address,
       MessageTypeClaim,
       '奖励领取',
-      `系统给你签发了一条奖励${humanReadable(usdt)}USDT的奖励，请尽快领取`
+      `系统给您签发了一条奖励${humanReadable(usdt)}USDT的奖励`
     )
 
     reply.send({

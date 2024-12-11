@@ -150,9 +150,21 @@ const main = async () => {
   if (needSetStar) {
     let star = 5
     let delegatorPrivateKeys = [privateKey].concat(...privateKeys)
+    const message = String(parseInt(new Date().getTime() / 1000))
+    const signature = owner.signMessageSync(message)
     for (const privateKey of delegatorPrivateKeys) {
       const delegator = new ethers.Wallet(privateKey, provider)
-      data = decodeReply(await client.post('/set-user-star', { address: delegator.address, star }))
+      data = decodeReply(
+        await client.post(
+          '/set-user-star',
+          { address: delegator.address, star },
+          {
+            headers: {
+              Authorization: message + ' ' + signature
+            }
+          }
+        )
+      )
       console.log('set user star', data)
       star -= 1
     }
@@ -216,6 +228,46 @@ const main = async () => {
     // 确认领取
     data = decodeReply(await client.post(`/confirm-claim`, { hash: tx.hash }))
     console.log('confirm-claim', data)
+  }
+
+  // 用户跟链交互复投（重新质押）
+  if (true) {
+    const deletagors = [delegator, owner]
+    let cid = 0
+    for (const delegator of deletagors) {
+      // 发送交易
+      const tx = await delaney.connect(delegator).redelegate(cid++, deadline)
+      // 等待交易上链
+      await tx.wait()
+
+      // 给后台确认质押金额(不去确认我们也要可以)
+      data = decodeReply(await client.post('/confirm-redelegate', { hash: tx.hash }))
+      console.log('confirm redelegate', data)
+    }
+  }
+
+  // 用户跟链交互取消质押
+  if (true) {
+    // 因为价格没变，但是领走了奖励，所以项目方需要存mud进去才够用户取消质押
+    let tx = await delaney.connect(owner).deposit(100000 * 1000000)
+    await tx.wait()
+
+    await sleep(15000) // 上面复投了，不能马上取消质押
+    const deletagors = [delegator, owner]
+    let cid = 0
+    for (const delegator of deletagors) {
+      // 发送交易
+      tx = await delaney.connect(delegator).undelegate(cid++, 0, deadline)
+      data = decodeReply(await client.post('/undelegate', { hash: tx.hash }))
+      console.log('undelegate', data)
+
+      // 等待交易上链
+      await tx.wait()
+
+      // 给后台确认质押金额(不去确认我们也要可以)
+      data = decodeReply(await client.post('/confirm-undelegate', { hash: tx.hash }))
+      console.log('confirm undelegate', data)
+    }
   }
 }
 

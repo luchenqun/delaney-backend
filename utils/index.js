@@ -198,7 +198,7 @@ export const authorizationCheck = (value, users) => {
     console.log('recover address', signer)
     for (const user of users) {
       if (signer.toLowerCase() == user.toLowerCase()) {
-        return { pass: true, err: '', address }
+        return { pass: true, err: '', address: signer }
       }
     }
     return { pass: false, err: 'address is not allow' }
