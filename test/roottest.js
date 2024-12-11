@@ -244,11 +244,16 @@ const main = async () => {
         console.log('delegate error: ', error)
         return err
     }
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
     return data
   }
 
+  const undelegators = []
   // owner进行质押
+<<<<<<< Updated upstream
   console.log('--------> owner delegate')
   const ownerData = await delegateFunc(owner)
   console.log('owner delegate', ownerData)
@@ -257,6 +262,25 @@ const main = async () => {
     // 发送交易
     await delegateFunc(delegator)
     await sleep(3*1000)
+=======
+  {
+    console.log('--------> owner delegate')
+    try {
+      await delegateFunc(owner)
+      // 用户跟链交互进行质押
+      for (let i = 0; i < delegators.length; i++) {
+        // 发送交易
+
+        data = await delegateFunc(delegators[i])
+        if (i === 4 || i === 8 || i === 14) {
+          undelegators.push({ delegate: data, delegator: delegators[i] })
+        }
+        await sleep(3 * 1000)
+      }
+    } catch (error) {
+      console.log('delegate error: ', error)
+    }
+>>>>>>> Stashed changes
   }
 
   //   // 用户获取最新的奖励信息
@@ -284,9 +308,126 @@ const main = async () => {
   //   }
 
   {
+<<<<<<< Updated upstream
     data = decodeReply(await client.get(`/users`))
     console.log(data)
+=======
+    data = decodeReply(await client.get(`/dynamic-rewards?page=1&page_size=10`))
+    console.log('dynamic-rewards', data)
+
+    data = decodeReply(await client.get(`/static-rewards?page=1&page_size=10`))
+    console.log('static-rewards', data)
+
+    for (const delegator of delegators) {
+      data = decodeReply(await client.get(`/dynamic-reward-user-stat?address=${delegator.address}`))
+      console.log('dynamic-reward-user-stat', data)
+
+      data = decodeReply(await client.get(`/static-reward-user-stat?address=${delegator.address}`))
+      console.log('static-reward-user-stat', data)
+    }
   }
+
+  // 用户获取最新的奖励信息
+  {
+    await sleep(3000) // 等待3秒有静态奖励产出
+    for (const delegator of delegators) {
+      try {
+        console.log('now is', parseInt(new Date().getTime() / 1000))
+        data = decodeReply(await client.get(`/latest-claim?address=${delegator.address}`))
+        console.log('latest-claim', data)
+        if (data.usdt === 0 || (data.reward_ids.length === 0 && data.static_ids.length === 0)) {
+          continue
+        }
+
+        const { usdt, reward_ids } = data
+        const min_mud = 1
+        data = decodeReply(await client.post('/sign-claim', { address: delegator.address, usdt, min_mud, reward_ids }))
+        console.log('sign-claim', data)
+
+        const { signature, deadline } = data
+        const tx = await delaney.connect(delegator).claim(usdt, min_mud, JSON.stringify(reward_ids), signature, deadline)
+        console.log('call contract claim', tx.hash)
+
+        // 领取奖励
+        data = decodeReply(await client.post('/claim', { hash: tx.hash, signature }))
+        console.log('claim', data)
+
+        // 确认领取奖励
+        data = decodeReply(await client.post(`/confirm-claim`, { hash: tx.hash }))
+        console.log('confirm-claim', data)
+
+        data = decodeReply(await client.get(`/claim-user-stat?address=${delegator.address}`))
+        console.log('claim-user-stat', data)
+
+        data = decodeReply(await client.get(`/claim?signature=${signature}`))
+        console.log('get claim', data)
+      } catch (error) {
+        console.log('claim error: ', error)
+      }
+    }
+  }
+
+  // 取消质押
+  {
+    for (const undelegator of undelegators) {
+      const { delegate, delegator } = undelegator
+      try {
+        const min_mud = 1
+        const tx = await delaney.connect(delegator).undelegate(delegate.cid, min_mud, deadline)
+
+        // 后台记录质押信息
+        data = decodeReply(await client.post('/undelegate', { hash: tx.hash }))
+        console.log('undelegate', data)
+
+        // 等待交易上链
+        await tx.wait()
+
+        // 给后台确认质押金额(不去确认我们也要可以)
+        data = decodeReply(await client.post('/confirm-undelegate', { hash: tx.hash }))
+        console.log('confirm undelegate', data)
+      } catch (error) {
+        console.log('undelegate error: ', error)
+      }
+    }
+>>>>>>> Stashed changes
+  }
+
+  // // 用户列表
+  // {
+  //   const message = String(parseInt(new Date().getTime() / 1000))
+  //   const signature = owner.signMessageSync(message)
+
+  //   const data = decodeReply(
+  //     await client.get(`/users?page=1&page_size=10`, {
+  //       headers: {
+  //         Authorization: message + ' ' + signature
+  //       }
+  //     })
+  //   )
+  //   console.log('--------> users', data)
+  // }
+
+  // // 获取团队的列表
+  // {
+  //   const message = String(parseInt(new Date().getTime() / 1000))
+  //   const signature = owner.signMessageSync(message)
+  //   for (const delegator of delegators) {
+  //     const data = decodeReply(
+  //       await client.get(`/teams?address=${delegator.address}&page=1&page_size=10`, {
+  //         headers: {
+  //           Authorization: message + ' ' + signature
+  //         }
+  //       })
+  //     )
+  //     console.log('--------> teams', data)
+  //   }
+  // }
+
+  // // 消息记录
+  // {
+  //   const data = decodeReply(await client.get(`/messages?page=1&page_size=10`))
+  //   console.log('--------> messages', data)
+  // }
 }
 
 main()

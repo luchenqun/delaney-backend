@@ -849,7 +849,6 @@ export default async function (fastify, opts) {
 
     transaction()
 
-    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(delegate.address, MessageTypeDelegate, '质押', '质押成功')
     db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
       delegate.address,
       MessageTypeConfirmDelegate,
@@ -913,7 +912,7 @@ export default async function (fastify, opts) {
     }
 
     const from = receipt.from.toLowerCase()
-    const [cid, ,] = txDescription.args
+    const [cid, mud] = txDescription.args
     // 交易失败什么也不需要做
     if (receipt.status == ReceiptFail) {
       return {
@@ -1062,7 +1061,12 @@ export default async function (fastify, opts) {
 
     transaction()
 
-    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(delegate.address, MessageTypeDelegate, '复投', '复投成功')
+    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+      delegate.address,
+      MessageTypeConfirmDelegate,
+      '复投',
+      `您成功复投了${humanReadable(mud)}MUD，交易哈希为${hash}`
+    )
 
     delegate = db.prepare('SELECT * FROM delegate WHERE cid = ?').get(cid)
     reply.send({
@@ -1904,6 +1908,12 @@ export default async function (fastify, opts) {
     let claim = db.prepare('SELECT * FROM claim WHERE signature = ?').get(signature)
 
     if (receipt.status == ReceiptFail) {
+      db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+        from,
+        MessageTypeConfirmClaim,
+        '领取',
+        `您领取的${humanReadable(claim.mud)}MUD交易失败，交易哈希为${hash}`
+      )
       if (claim) {
         db.prepare('UPDATE claim SET address = ?, usdt = ?, min_mud = ?, reward_ids = ?, status = ?, signature = ?, claim_time = ?, deadline = ? WHERE hash = ?').run(
           from,
@@ -1993,6 +2003,12 @@ export default async function (fastify, opts) {
           now(),
           deadline,
           hash
+        )
+        db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+          from,
+          MessageTypeConfirmClaim,
+          '领取',
+          `恭喜您成功领取了${humanReadable(mud)}MUD，交易哈希为${hash}`
         )
       }
 
