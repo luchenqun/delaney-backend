@@ -66,20 +66,47 @@ const main = async () => {
     delegatorPrivateKey
   ]
 
-  const message = String(parseInt(new Date().getTime() / 1000))
-  const signature = owner.signMessageSync(message)
-  data = decodeReply(
-    await client.get('/teams', {
-      params: {
-        page: 2,
-        address: '0x00000Be6819f41400225702D32d3dd23663Dd690'
-      },
-      headers: {
-        Authorization: message + ' ' + signature
-      }
-    })
-  )
-  console.log(data)
+  if (false) {
+    const message = String(parseInt(new Date().getTime() / 1000))
+    const signature = owner.signMessageSync(message)
+    data = decodeReply(
+      await client.get('/teams', {
+        params: {
+          page: 2,
+          address: '0x00000Be6819f41400225702D32d3dd23663Dd690'
+        },
+        headers: {
+          Authorization: message + ' ' + signature
+        }
+      })
+    )
+    console.log(data)
+  }
+
+  {
+    // UniswapV2Router02 地址
+    const ROUTER_ADDRESS = '0x219b7874c867b02210af91BE32d9331cFCd1EDf7'
+
+    // UniswapV2Router02 ABI (部分)
+    const ROUTER_ABI = ['function getAmountsOut(uint amountIn, address[] memory path) public view returns (uint[] memory amounts)']
+
+    // 代币地址
+    const PUSDT_ADDRESS = '0x592d157a0765b43b0192Ba28F4b8cd4F50E326cF' // PUSDT 合约地址
+    const WETH_ADDRESS = '0x82f9d23cB62Ec0016109B7C4b8dB34890FdBA0F0' // WETH 地址（Uniswap 常用中间代币）
+
+    const amountIn = ethers.parseUnits('1', 18) // 输入 1 MUD（假设 MUD 是 18 位小数）
+    const path = [WETH_ADDRESS, PUSDT_ADDRESS] // 兑换路径：MUD -> PUSDT
+    const routerContract = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, provider)
+    try {
+      const amountsOut = await routerContract.getAmountsOut(amountIn, path)
+
+      // 最终输出的 PUSDT 数量
+      const amountOut = ethers.formatUnits(amountsOut[amountsOut.length - 1], 6) // 假设 PUSDT 是 6 位小数
+      console.log(`1 MUD can be swapped for approximately ${amountOut} PUSDT`)
+    } catch (error) {
+      console.error('Error fetching quote:', error)
+    }
+  }
 }
 
 main()
