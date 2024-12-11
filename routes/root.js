@@ -851,16 +851,16 @@ export default async function (fastify, opts) {
           )
         }
       }
+
+      db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+        delegate.address,
+        MessageTypeConfirmDelegate,
+        '质押',
+        `您成功质押了${humanReadable(mud)}MUD，交易哈希为${hash}`
+      )
     })
 
     transaction()
-
-    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
-      delegate.address,
-      MessageTypeConfirmDelegate,
-      '质押',
-      `您成功质押了${humanReadable(mud)}MUD，交易哈希为${hash}`
-    )
 
     delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
 
@@ -1088,16 +1088,16 @@ export default async function (fastify, opts) {
             .format('YYYY-MM-DD HH:mm:ss')}`
         )
       }
+
+      db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+        delegate.address,
+        MessageTypeConfirmDelegate,
+        '复投',
+        `您成功复投了${humanReadable(mud)}MUD，交易哈希为${hash}`
+      )
     })
 
     transaction()
-
-    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
-      delegate.address,
-      MessageTypeConfirmDelegate,
-      '复投',
-      `您成功复投了${humanReadable(mud)}MUD，交易哈希为${hash}`
-    )
 
     delegate = db.prepare('SELECT * FROM delegate WHERE cid = ?').get(cid)
     reply.send({
@@ -1327,17 +1327,18 @@ export default async function (fastify, opts) {
           )
         }
       }
+
+      db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+        delegate.address,
+        MessageTypeConfirmUndelegate,
+        '取回质押',
+        `您成功取回了质押的${humanReadable(mud)}MUD，实际返回 ${humanReadable(back_mud)}MUD，交易哈希为${hash}`
+      )
     })
 
     transaction()
 
     delegate = db.prepare('SELECT * FROM delegate WHERE cid = ?').get(cid)
-    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
-      delegate.address,
-      MessageTypeConfirmUndelegate,
-      '取回质押',
-      `您成功取回了质押的${humanReadable(mud)}MUD，实际返回 ${humanReadable(back_mud)}MUD，交易哈希为${hash}`
-    )
 
     reply.send({
       code: 0,
@@ -1780,15 +1781,16 @@ export default async function (fastify, opts) {
           ...dynamic_ids
         )
       }
-    })
-    transaction()
 
-    db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
-      address,
-      MessageTypeClaim,
-      '奖励领取',
-      `系统给您签发了一条奖励${humanReadable(usdt)}USDT的奖励`
-    )
+      db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+        address,
+        MessageTypeClaim,
+        '奖励领取',
+        `系统给您签发了一条奖励${humanReadable(usdt)}USDT的奖励`
+      )
+    })
+
+    transaction()
 
     reply.send({
       code: 0,
@@ -2072,12 +2074,6 @@ export default async function (fastify, opts) {
           deadline,
           hash
         )
-        db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
-          from,
-          MessageTypeConfirmClaim,
-          '奖励领取',
-          `恭喜您成功领取了${humanReadable(mud)}MUD，对应价值为${humanReadable(usdt)}USDT，交易哈希为${hash}`
-        )
       }
 
       const { static_ids, dynamic_ids } = reward_ids
@@ -2089,6 +2085,13 @@ export default async function (fastify, opts) {
       if (Array.isArray(dynamic_ids) && dynamic_ids.length > 0) {
         db.prepare(`UPDATE dynamic_reward SET status = ?, hash = ? WHERE id IN (${dynamic_ids.map(() => '?').join(', ')})`).run(RewardClaimed, hash, ...dynamic_ids)
       }
+
+      db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
+        from,
+        MessageTypeConfirmClaim,
+        '奖励领取',
+        `恭喜您成功领取了${humanReadable(mud)}MUD，对应价值为${humanReadable(usdt)}USDT，交易哈希为${hash}`
+      )
     })
     transaction()
 
