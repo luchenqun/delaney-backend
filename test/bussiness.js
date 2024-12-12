@@ -28,15 +28,10 @@ const sleep = (ms) => {
 }
 
 const main = async () => {
-  const poolArtifact = await fs.readJSON(path.join(contractDir, 'UniswapV3Pool.sol/UniswapV3Pool.json'))
-  const mudArtifact = await fs.readJSON(path.join(contractDir, 'MetaUserDAOToken.sol/MetaUserDAOToken.json'))
   const delaneyArtifact = await fs.readJSON(path.join(contractDir, 'Delaney.sol/Delaney.json'))
-  const { abi: poolAbi, bytecode: poolBytecode } = poolArtifact
-  const { abi: mudAbi, bytecode: mudBytecode } = mudArtifact
   const { abi: delaneyAbi, bytecode: delaneyBytecode } = delaneyArtifact
-  const poolAddress = '0x546bc6E008689577C69C42b9C1f6b4C923f59B5d' // '0x5338968f9646e4a865d76e07c2a6e340dd3ac462'
-  const mudAddress = '0xDad56A6B5eed8567Fc4395d05b59D15077c2c888' // '0xf6EaC236757e82D6772E8bD02D36a0c791d78C51'
-  const delaneyAddress = '0x33Add53fb1CDeF4A10BeE7249b66a685200DDd2f'
+  const poolAddress = '0x546bc6E008689577C69C42b9C1f6b4C923f59B5d'
+  const delaneyAddress = '0xDad56A6B5eed8567Fc4395d05b59D15077c2c888'
 
   const rpc = 'http://127.0.0.1:8545'
   const provider = new ethers.JsonRpcProvider(rpc)
@@ -101,13 +96,10 @@ const main = async () => {
   const pool = (await provider.getCode(poolAddress)).length > 2 ? new ethers.Contract(poolAddress, poolAbi, owner) : await deploy(owner, poolAbi, poolBytecode)
   console.log('contract pool address = ', pool.target)
 
-  const mud = (await provider.getCode(mudAddress)).length > 2 ? new ethers.Contract(mudAddress, mudAbi, owner) : await deploy(owner, mudAbi, mudBytecode, [owner.address])
-  console.log('contract mud address = ', mud.target)
-
   const delaney =
     (await provider.getCode(delaneyAddress)).length > 2
       ? new ethers.Contract(delaneyAddress, delaneyAbi, owner)
-      : await deploy(owner, delaneyAbi, delaneyBytecode, [owner.address, owner.address, pool.target, mud.target])
+      : await deploy(owner, delaneyAbi, delaneyBytecode, [owner.address, owner.address, pool.target])
   console.log('contract delaney address = ', delaney.target)
 
   {
@@ -146,7 +138,7 @@ const main = async () => {
     parent_ref = data.ref
   }
 
-  // 修改星级，为后面的奖励分配做好准备
+  // ��改星级，为后面的奖励分配做好准备
   if (needSetStar) {
     let star = 5
     let delegatorPrivateKeys = [privateKey].concat(...privateKeys)
@@ -170,28 +162,14 @@ const main = async () => {
     }
   }
 
-  // 质押之前，用户要给delaney合约授权扣除用户的mud
-  {
-    const deletagors = [delegator, owner]
-    for (const delegator of deletagors) {
-      let allowance = await mud.allowance(delegator.address, delaney.target)
-      if (allowance == 0n) {
-        const amount = 1000000000 * 1000000
-
-        const tx = await mud.connect(delegator).approve(delaney.target, amount)
-        await tx.wait()
-      }
-    }
-  }
-
   // 用户跟链交互进行质押
   if (true) {
     const deletagors = [delegator, owner]
     for (const delegator of deletagors) {
       // 发送交易
-      const mud = 1000 * 1000000
-      const min_usdt = 1 * 1000000
-      const tx = await delaney.connect(delegator).delegate(mud, min_usdt, deadline)
+      const mud = 1000n * 1000000000000000000n
+      const min_usdt = 1n * 1000000n
+      const tx = await delaney.connect(delegator).delegate(min_usdt, deadline, { value: mud })
 
       // 后台记录质押信息
       data = decodeReply(await client.post('/delegate', { hash: tx.hash }))
@@ -200,7 +178,7 @@ const main = async () => {
       // 等待交易上链
       await tx.wait()
 
-      // 给后台确认质押金额(不去确认我们也要可以)
+      // 给后台确认质押金额
       data = decodeReply(await client.post('/confirm-delegate', { hash: tx.hash }))
       console.log('confirm delegate', data)
     }
@@ -236,11 +214,9 @@ const main = async () => {
     let cid = 0
     for (const delegator of deletagors) {
       // 发送交易
-      const tx = await delaney.connect(delegator).redelegate(cid++, deadline)
-      // 等待交易上链
+      const tx = await delaney.connect(delegator).redelegate(cid++, deadline, { value: 0 }) // 复投不需要额外转token
       await tx.wait()
 
-      // 给后台确认质押金额(不去确认我们也要可以)
       data = decodeReply(await client.post('/confirm-redelegate', { hash: tx.hash }))
       console.log('confirm redelegate', data)
     }
@@ -249,7 +225,7 @@ const main = async () => {
   // 用户跟链交互取消质押
   if (true) {
     // 因为价格没变，但是领走了奖励，所以项目方需要存mud进去才够用户取消质押
-    let tx = await delaney.connect(owner).deposit(100000 * 1000000)
+    let tx = await delaney.connect(owner).deposit(10000n * 1000000000000000000n)
     await tx.wait()
 
     await sleep(15000) // 上面复投了，不能马上取消质押

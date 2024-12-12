@@ -30,7 +30,9 @@ import {
   MessageTypeStaticReward,
   MessageTypeRiseStar
 } from '../utils/constant.js'
-import { randRef, rpc, provider, mudAddress, delaney, delaneyAddress, signerPrivateKey, signerAddress, now, adminAddressList } from '../utils/index.js'
+import { randRef, rpc, provider, delaney, delaneyAddress, signerPrivateKey, signerAddress, now, adminAddressList } from '../utils/index.js'
+
+const UsdtPrecision = 1000000n
 
 BigInt.prototype.toJSON = function () {
   return this.toString()
@@ -39,27 +41,6 @@ BigInt.prototype.toJSON = function () {
 export default async function (fastify, opts) {
   fastify.get('/', async function (request, reply) {
     return { root: true }
-  })
-
-  // 获取mud的价格
-  // curl http://127.0.0.1:3000/mud-price | jq
-  fastify.get('/mud-price', async function (request, reply) {
-    let block_tag = 'latest'
-
-    if (/^\d+$/.test(request.query.block_tag)) {
-      block_tag = parseInt(request.query.block_tag)
-    }
-    // [46000000, 50702048, 54702048, 64188580, 64188680, 'latest']
-    // 0x2b4a7f89a40e25b83ceeb858e44524452d4fa056a44c0a36e64263e16a1e5197
-    console.log('blockTag --->', request.query.blockTag, block_tag)
-    const price = await mudPrice(block_tag)
-    console.log('price', price)
-
-    return {
-      code: 0,
-      msg: '',
-      data: { ...price, blockTag: block_tag }
-    }
   })
 
   // 获取配置列表信息
@@ -122,7 +103,7 @@ export default async function (fastify, opts) {
     }
   })
 
-  // 创建用户
+  // 新建用户
   // TODO: 为了防止用户恶意注册，会检查用户相关条件，比如：是否有POL，是否有MUD代币，是否有USDT，是否nonce大于0
   // curl -X POST -H "Content-Type: application/json" -d '{"address":"0x1111102Dd32160B064F2A512CDEf74bFdB6a9F96", "parent_ref": "888888"}' http://127.0.0.1:3000/create-user | jq
   fastify.post('/create-user', function (request, reply) {
@@ -184,21 +165,14 @@ export default async function (fastify, opts) {
 
     user = db.prepare('SELECT * FROM user WHERE address = ?').get(address)
 
-    // 在mud testnet测试环境下面，给用户转点mud原生代币以及erc20的mud
+    // 在mud testnet测试环境下面，给用户转点原生代币
     setTimeout(async () => {
       if (rpc.includes('mud')) {
-        const abi = ['function balanceOf(address owner) view returns (uint256)', 'function transfer(address to, uint amount) returns (bool)']
         const privateKey = '09100ba7616fcd062a5e507ead94c0269ab32f1a46fe0ec80056188976020f71'
         const wallet = new ethers.Wallet(privateKey, provider)
-        const mudToken = new ethers.Contract(mudAddress, abi, wallet)
         const balance = await provider.getBalance(address)
         if (balance < 1000000000000000000n) {
-          const tx = await wallet.sendTransaction({ to: address, value: 10000000000000000000n })
-          await tx.wait()
-        }
-        const mud = await mudToken.balanceOf(address)
-        if (mud == 0n) {
-          const tx = await mudToken.transfer(address, 10000000000)
+          const tx = await wallet.sendTransaction({ to: address, value: 1000000000000000000000n })
           await tx.wait()
         }
       }
@@ -427,16 +401,16 @@ export default async function (fastify, opts) {
 
     const address = tx.from.toLowerCase()
     let [mud, min_usdt, _] = txDescription.args
-    mud = parseInt(mud)
-    min_usdt = parseInt(min_usdt)
+    mud = BigInt(mud.toString())
+    min_usdt = BigInt(min_usdt.toString())
 
     // 将质押信息插入数据库
-    db.prepare('INSERT INTO delegate (address, mud, min_usdt, hash) VALUES (?, ?, ?, ?)').run(address, mud, min_usdt, hash)
+    db.prepare('INSERT INTO delegate (address, mud, min_usdt, hash) VALUES (?, ?, ?, ?)').run(address, mud.toString(), min_usdt.toString(), hash)
     db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
       address,
       MessageTypeDelegate,
       '质押',
-      `您质押了${humanReadable(mud)}MUD，交易哈希为${hash}，等待上链...`
+      `您质押了${humanReadable(mud.toString())}MUD，交易哈希为${hash}，等待上链...`
     )
 
     delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
@@ -569,19 +543,19 @@ export default async function (fastify, opts) {
 
     // 处理交易失败
     let [mud, min_usdt, _] = txDescription.args
-    mud = parseInt(mud)
-    min_usdt = parseInt(min_usdt)
+    mud = BigInt(mud.toString())
+    min_usdt = BigInt(min_usdt.toString())
     if (receipt.status == ReceiptFail) {
       db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
         from,
         MessageTypeConfirmDelegate,
         '质押',
-        `您质押的${humanReadable(mud)}MUD交易失败，交易哈希为${hash}`
+        `您质押的${humanReadable(mud.toString())}MUD交易失败，交易哈希为${hash}`
       )
       if (delegate) {
-        db.prepare('UPDATE delegate SET address = ?, mud = ?, min_usdt = ?, status = ? WHERE hash = ?').run(from, mud, min_usdt, DelegateStatusFail, hash)
+        db.prepare('UPDATE delegate SET address = ?, mud = ?, min_usdt = ?, status = ? WHERE hash = ?').run(from, mud.toString(), min_usdt.toString(), DelegateStatusFail, hash)
       } else {
-        db.prepare('INSERT INTO delegate (address, mud, min_usdt, hash, status) VALUES (?, ?, ?, ?, ?)').run(from, mud, min_usdt, hash, DelegateStatusFail)
+        db.prepare('INSERT INTO delegate (address, mud, min_usdt, hash, status) VALUES (?, ?, ?, ?, ?)').run(from, mud.toString(), min_usdt.toString(), hash, DelegateStatusFail)
       }
       return {
         code: ErrorBusinessCode,
@@ -633,7 +607,7 @@ export default async function (fastify, opts) {
     //     bool withdrew;
     // }
     let { usdt, periodDuration, periodNum, unlockTime, withdrew } = (await delaney.delegations(cid)).toObject(true)
-    usdt = parseInt(usdt)
+    usdt = BigInt(usdt.toString())
     const period_duration = parseInt(periodDuration)
     const period_num = parseInt(periodNum)
     const unlock_time = parseInt(unlockTime)
@@ -677,11 +651,11 @@ export default async function (fastify, opts) {
       if (delegate) {
         db.prepare(
           'UPDATE delegate SET cid = ?, address = ?, mud = ?, min_usdt = ?, usdt = ?, hash = ?, period_duration = ?, period_num = ?, period_reward_ratio = ?, status = ?, unlock_time = ? WHERE id = ?'
-        ).run(cid, from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time, delegate.id)
+        ).run(cid, from, mud.toString(), min_usdt.toString(), usdt.toString(), hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time, delegate.id)
       } else {
         db.prepare(
           'INSERT INTO delegate (cid, address, mud, min_usdt, usdt, hash, period_duration, period_num, period_reward_ratio, status, unlock_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        ).run(cid, from, mud, min_usdt, usdt, hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time)
+        ).run(cid, from, mud.toString(), min_usdt.toString(), usdt.toString(), hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time)
       }
 
       // 上面查询delegate可能还没有
@@ -690,27 +664,29 @@ export default async function (fastify, opts) {
       }
 
       // 自己信息更新：自己质押的mud/usdt更新，状态更新
-      db.prepare('UPDATE user SET mud = ?, usdt = ? WHERE address = ?').run(self.mud + mud, self.usdt + usdt, self.address)
+      const newMud = BigInt(self.mud) + mud
+      const newUsdt = BigInt(self.usdt) + usdt
+      db.prepare('UPDATE user SET mud = ?, usdt = ? WHERE address = ?').run(newMud.toString(), newUsdt.toString(), self.address)
 
       // 分发动态奖励中的个人奖励
       if (parents.length > 0) {
         for (let i = 0; i < RewardMaxDepth; i++) {
           const user = parents[i]
           // 个人投资额度需要大于某个数才能获取个人奖励
-          if (user.usdt >= config['preson_reward_min_usdt']) {
-            const reward_usdt = parseInt((config[RewardPersonKey + (i + 1)] * usdt) / 100)
+          if (BigInt(user.usdt) >= BigInt(config['preson_reward_min_usdt'])) {
+            const reward_usdt = (BigInt(config[RewardPersonKey + (i + 1)]) * usdt) / BigInt(100))
             db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?, ?)').run(
               delegate.id,
               from,
               user.address,
-              reward_usdt,
+              reward_usdt.toString(),
               RewardTypePerson
             )
             db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
               user.address,
               MessageTypePersonReward,
               '奖励',
-              `恭喜您收到了来自${from}质押${humanReadable(mud)}MUD获得的${humanReadable(reward_usdt)}USDT的个人奖励`
+              `恭喜您收到了来自${from}质押${humanReadable(mud.toString())}MUD获得的${humanReadable(reward_usdt.toString(), UsdtPrecision)}USDT的个人奖励`
             )
           }
           // 没5层那就直接退出
@@ -722,27 +698,27 @@ export default async function (fastify, opts) {
 
       // 分发动态奖励中的团队奖励
       let pre_star = 0 // 上个星级
-      let pre_raito = 0 // 上个星级的奖励
+      let pre_raito = BigInt(0) // 上个星级的奖励
       for (let i = 0; i < parents.length; i++) {
         const user = parents[i]
         // 个人投资额度需要大于某个数才能获取团队奖励
         const star = user.star > user.min_star ? user.star : user.min_star // 管理员可以直接更新星级
-        if (star > pre_star && user.usdt >= config['team_reward_min_usdt']) {
-          const cur_ratio = config[RewardTeamKey + star] // 每个星级奖励多少
+        if (star > pre_star && BigInt(user.usdt) >= BigInt(config['team_reward_min_usdt'])) {
+          const cur_ratio = BigInt(config[RewardTeamKey + star]) // 每个星级奖励多少
           const team_ratio = cur_ratio - pre_raito // 需要扣除给手下的，实际奖励多少
-          const reward_usdt = parseInt((team_ratio * usdt) / 100)
+          const reward_usdt = (team_ratio * usdt) / BigInt(100)
           db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?, ?)').run(
             delegate.id,
             from,
             user.address,
-            reward_usdt,
+            reward_usdt.toString(),
             RewardTypeTeam
           )
           db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
             user.address,
             MessageTypeTeamReward,
             '奖励',
-            `恭喜您收到了来自${from}质押${humanReadable(mud)}MUD获得的${humanReadable(reward_usdt)}USDT的团队奖励`
+            `恭喜您收到了来自${from}质押${humanReadable(mud.toString())}MUD获得的${humanReadable(reward_usdt.toString(), UsdtPrecision)}USDT的团队奖励`
           )
           pre_star = star
           pre_raito = cur_ratio
@@ -763,21 +739,19 @@ export default async function (fastify, opts) {
       for (let i = 0; i < period_num; i++) {
         const period = i + 1
         const reward_unlock_time = unlock_time - period_duration * (period_num - period)
-        const reward_usdt = parseInt((config['period_reward_ratio'] * usdt) / 100)
+        const reward_usdt = (BigInt(config['period_reward_ratio']) * usdt) / BigInt(100)
         db.prepare('INSERT INTO static_reward (delegate_id, period, address, usdt, unlock_time) VALUES (?, ?, ?, ?, ?)').run(
           delegate.id,
           period,
           from,
-          reward_usdt,
+          reward_usdt.toString(),
           reward_unlock_time
         )
         db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
           from,
           MessageTypeStaticReward,
           '奖励',
-          `恭喜您质押${humanReadable(mud)}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt)}USDT，解锁时间为 ${dayjs
-            .unix(reward_unlock_time)
-            .format('YYYY-MM-DD HH:mm:ss')}`
+          `恭喜您质押${humanReadable(mud.toString())}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt.toString(), UsdtPrecision)}USDT，解锁时间为 ${dayjs.unix(reward_unlock_time).format('YYYY-MM-DD HH:mm:ss')}`
         )
       }
 
@@ -787,19 +761,19 @@ export default async function (fastify, opts) {
         const user = parents[i]
         // 第一个节点累计直推金额
         if (i == 0) {
-          user.sub_mud += mud
-          user.sub_usdt += usdt
+          user.sub_mud = BigInt(user.sub_mud) + mud
+          user.sub_usdt = BigInt(user.sub_usdt) + usdt
         }
 
         // 所有父节点都需要加团队金额
-        user.team_mud += mud
-        user.team_usdt += usdt
+        user.team_mud = BigInt(user.team_mud) + mud
+        user.team_usdt = BigInt(user.team_usdt) + usdt
 
         // 从最大的星级开始查看用户是否满足星级条件
         user.pre_star = user.star
         for (let star = RewardMaxStar; star >= 1; star--) {
           if (star == 1) {
-            if (user.sub_usdt >= config['team_level1_sub_usdt'] && user.team_usdt >= config['team_level1_team_usdt']) {
+            if (BigInt(user.sub_usdt) >= BigInt(config['team_level1_sub_usdt']) && BigInt(user.team_usdt) >= BigInt(config['team_level1_team_usdt'])) {
               user.star = star
             }
           } else {
@@ -812,42 +786,18 @@ export default async function (fastify, opts) {
         }
         // 更新用户信息
         const { sub_mud, sub_usdt, team_mud, team_usdt, star, address } = user
-        db.prepare('UPDATE user SET sub_mud = ?, sub_usdt = ?, team_mud = ?, team_usdt = ?, star = ? WHERE address = ?').run(sub_mud, sub_usdt, team_mud, team_usdt, star, address)
-
-        /* 算法复杂，很容易出问题，弃用
-        // 升级团队星级
-        if (user.star == 0) {
-          // 从0星升到1星
-          if (user.sub_usdt >= config['team_level1_sub_usdt'] && user.team_usdt >= config['team_level1_team_usdt']) {
-            user.star = 1
-            user.upgradeStar = true
-          }
-        } else if (user.star < RewardMaxStar && i >= 1) {
-          // 只有1 ~ 4星才有机会升级，5星已经是满级了
-          const child = parents[i - 1]
-          // 只有子账号升级了，父账号才有可能升级
-          if (child.upgradeStar) {
-            // 查一下该用户下面的子账号已经有多少个了，如果只有1个，加上之前因为子账号升级了，那么久有可能需要升级了
-            const count = db.prepare('SELECT COUNT(*) FROM user WHERE star = ? AND parent = ?').get(user.star - 1, user.address)
-            // 不能跨越升级，比如现在的账号是4星了，上面升级的是1星，那么依然维持1星
-            if (child.star == user.star - 1 && count == 1) {
-              user.star = user.star + 1
-              user.upgradeStar = true
-            }
-          }
-        }
-        */
+        db.prepare('UPDATE user SET sub_mud = ?, sub_usdt = ?, team_mud = ?, team_usdt = ?, star = ? WHERE address = ?').run(sub_mud.toString(), sub_usdt.toString(), team_mud.toString(), team_usdt.toString(), star, address)
       }
 
       for (const user of parents) {
         const { sub_mud, sub_usdt, team_mud, team_usdt, pre_star, star, address } = user
-        db.prepare('UPDATE user SET sub_mud = ?, sub_usdt = ?, team_mud = ?, team_usdt = ?, star = ? WHERE address = ?').run(sub_mud, sub_usdt, team_mud, team_usdt, star, address)
+        db.prepare('UPDATE user SET sub_mud = ?, sub_usdt = ?, team_mud = ?, team_usdt = ?, star = ? WHERE address = ?').run(sub_mud.toString(), sub_usdt.toString(), team_mud.toString(), team_usdt.toString(), star, address)
         if (star > pre_star) {
           db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
             address,
             MessageTypeRiseStar,
             '升级',
-            `由于${from}质押${humanReadable(mud)}MUD，恭喜您从${pre_star}星升级为${star}星`
+            `由于${from}质押${humanReadable(mud.toString())}MUD，恭喜您从${pre_star}星升级为${star}星`
           )
         }
       }
@@ -856,7 +806,7 @@ export default async function (fastify, opts) {
         delegate.address,
         MessageTypeConfirmDelegate,
         '质押',
-        `您成功质押了${humanReadable(mud)}MUD，交易哈希为${hash}`
+        `您成功质押了${humanReadable(mud.toString())}MUD，交易哈希为${hash}`
       )
     })
 
@@ -905,7 +855,7 @@ export default async function (fastify, opts) {
       }
     }
 
-    // 确保交易调用的方法就是delegate
+    // 确保交易调用的方法就是redelegate
     const tx = await provider.getTransaction(hash)
     const txDescription = delaney.interface.parseTransaction(tx)
     // 交易解码不出来，或者解码出来的不是redelegate
@@ -920,7 +870,8 @@ export default async function (fastify, opts) {
     const from = receipt.from.toLowerCase()
     const [cid, deadline] = txDescription.args
     let { usdt, periodDuration, periodNum, unlockTime, withdrew, mud } = (await delaney.delegations(cid)).toObject(true)
-    usdt = parseInt(usdt)
+    usdt = BigInt(usdt.toString())
+    mud = BigInt(mud.toString())
     const period_duration = parseInt(periodDuration)
     const period_num = parseInt(periodNum)
     const unlock_time = parseInt(unlockTime)
@@ -931,7 +882,7 @@ export default async function (fastify, opts) {
         from,
         MessageTypeConfirmDelegate,
         '复投',
-        `您复投的${humanReadable(mud)}MUD交易失败，交易哈希为${hash}`
+        `您复投的${humanReadable(mud.toString())}MUD交易失败，交易哈希为${hash}`
       )
       return {
         code: ErrorBusinessCode,
@@ -1005,20 +956,20 @@ export default async function (fastify, opts) {
         for (let i = 0; i < RewardMaxDepth; i++) {
           const user = parents[i]
           // 个人投资额度需要大于某个数才能获取个人奖励
-          if (user.usdt >= config['preson_reward_min_usdt']) {
-            const reward_usdt = parseInt((config[RewardPersonKey + (i + 1)] * usdt) / 100)
+          if (BigInt(user.usdt) >= BigInt(config['preson_reward_min_usdt'])) {
+            const reward_usdt = (BigInt(config[RewardPersonKey + (i + 1)]) * usdt) / BigInt(100)
             db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?, ?)').run(
               delegate.id,
               from,
               user.address,
-              reward_usdt,
+              reward_usdt.toString(),
               RewardTypePerson
             )
             db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
               user.address,
               MessageTypePersonReward,
               '奖励',
-              `恭喜您收到了来自${from}复投${humanReadable(mud)}MUD获得的${humanReadable(reward_usdt)}USDT的个人奖励`
+              `恭喜您收到了来自${from}复投${humanReadable(mud.toString())}MUD获得的${humanReadable(reward_usdt.toString(), UsdtPrecision)}USDT的个人奖励`
             )
           }
           // 没5层那就直接退出
@@ -1030,27 +981,27 @@ export default async function (fastify, opts) {
 
       // 分发动态奖励中的团队奖励
       let pre_star = 0 // 上个星级
-      let pre_raito = 0 // 上个星级的奖励
+      let pre_raito = BigInt(0) // 上个星级的奖励
       for (let i = 0; i < parents.length; i++) {
         const user = parents[i]
         // 个人投资额度需要大于某个数才能获取团队奖励
         const star = user.star > user.min_star ? user.star : user.min_star // 管理员可以直接更新星级
-        if (star > pre_star && user.usdt >= config['team_reward_min_usdt']) {
-          const cur_ratio = config[RewardTeamKey + star] // 每个星级奖励多少
+        if (star > pre_star && BigInt(user.usdt) >= BigInt(config['team_reward_min_usdt'])) {
+          const cur_ratio = BigInt(config[RewardTeamKey + star]) // 每个星级奖励多少
           const team_ratio = cur_ratio - pre_raito // 需要扣除给手下的，实际奖励多少
-          const reward_usdt = parseInt((team_ratio * usdt) / 100)
+          const reward_usdt = (team_ratio * usdt) / BigInt(100)
           db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?, ?)').run(
             delegate.id,
             from,
             user.address,
-            reward_usdt,
+            reward_usdt.toString(),
             RewardTypeTeam
           )
           db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
             user.address,
             MessageTypeTeamReward,
             '奖励',
-            `恭喜您收到了来自${from}复投${humanReadable(mud)}MUD获得的${humanReadable(reward_usdt)}USDT的团队奖励`
+            `恭喜您收到了来自${from}复投${humanReadable(mud.toString())}MUD获得的${humanReadable(reward_usdt.toString(), UsdtPrecision)}USDT的团队奖励`
           )
           pre_star = star
           pre_raito = cur_ratio
@@ -1071,21 +1022,19 @@ export default async function (fastify, opts) {
       for (let i = 0; i < period_num; i++) {
         const period = i + 1
         const reward_unlock_time = unlock_time - period_duration * (period_num - period)
-        const reward_usdt = parseInt((config['period_reward_ratio'] * usdt) / 100)
+        const reward_usdt = (BigInt(config['period_reward_ratio']) * usdt) / BigInt(100)
         db.prepare('INSERT INTO static_reward (delegate_id, period, address, usdt, unlock_time) VALUES (?, ?, ?, ?, ?)').run(
           delegate.id,
           period,
           from,
-          reward_usdt,
+          reward_usdt.toString(),
           reward_unlock_time
         )
         db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
           from,
           MessageTypeStaticReward,
           '奖励',
-          `恭喜您复投${humanReadable(mud)}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt)}USDT，解锁时间为 ${dayjs
-            .unix(reward_unlock_time)
-            .format('YYYY-MM-DD HH:mm:ss')}`
+          `恭喜您复投${humanReadable(mud.toString())}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt.toString(), UsdtPrecision)}USDT，解锁时间为 ${dayjs.unix(reward_unlock_time).format('YYYY-MM-DD HH:mm:ss')}`
         )
       }
 
@@ -1093,7 +1042,7 @@ export default async function (fastify, opts) {
         delegate.address,
         MessageTypeConfirmDelegate,
         '复投',
-        `您成功复投了${humanReadable(mud)}MUD，交易哈希为${hash}`
+        `您成功复投了${humanReadable(mud.toString())}MUD，交易哈希为${hash}`
       )
     })
 
@@ -1234,10 +1183,10 @@ export default async function (fastify, opts) {
 
     // 根据cid去合约查询delegate的信息。因为上面已经确认了是delegate而且交易已经成功了
     let { mud, usdt, backMud: back_mud } = (await delaney.delegations(cid)).toObject(true)
-    mud = parseInt(mud)
-    usdt = parseInt(usdt)
-    back_min_mud = parseInt(back_min_mud)
-    back_mud = parseInt(back_mud)
+    mud = BigInt(mud.toString())
+    usdt = BigInt(usdt.toString())
+    back_min_mud = BigInt(back_min_mud.toString())
+    back_mud = BigInt(back_mud.toString())
 
     let delegate = db.prepare('SELECT * FROM delegate WHERE cid = ?').get(cid)
     if (!delegate) {
@@ -1277,33 +1226,35 @@ export default async function (fastify, opts) {
       console.log({ back_mud, back_min_mud, hash, cid })
       // 质押信息更新
       db.prepare('UPDATE delegate SET back_mud = ?, back_min_mud = ?, status = ?, undelegate_time = ?, undelegate_hash = ? WHERE cid = ?').run(
-        back_mud,
-        back_min_mud,
+        back_mud.toString(),
+        back_min_mud.toString(),
         DelegateStatusWithdrew,
         parseInt(new Date().getTime() / 1000),
         hash,
         cid
       )
       // 自己信息更新：自己质押的mud/usdt更新，状态更新
-      db.prepare('UPDATE user SET mud = ?, usdt = ? WHERE address = ?').run(self.mud - mud, self.usdt - usdt, self.address)
+      const newMud = BigInt(self.mud) - mud
+      const newUsdt = BigInt(self.usdt) - usdt
+      db.prepare('UPDATE user SET mud = ?, usdt = ? WHERE address = ?').run(newMud.toString(), newUsdt.toString(), self.address)
 
       // 上级用户信息更新：团队星级，直推以及团队的mud/usdt的更新
       for (let i = 0; i < parents.length; i++) {
         const user = parents[i]
         // 减掉第一个节点的累计直推金额
         if (i == 0) {
-          user.sub_mud -= mud
-          user.sub_usdt -= usdt
+          user.sub_mud = BigInt(user.sub_mud) - mud
+          user.sub_usdt = BigInt(user.sub_usdt) - usdt
         }
 
         // 所有父节点都需要减掉团队金额
-        user.team_mud -= mud
-        user.team_usdt -= usdt
+        user.team_mud = BigInt(user.team_mud) - mud
+        user.team_usdt = BigInt(user.team_usdt) - usdt
 
         user.pre_star = user.star
         for (let star = RewardMaxStar; star >= 1; star--) {
           if (star == 1) {
-            if (user.sub_usdt >= config['team_level1_sub_usdt'] && user.team_usdt >= config['team_level1_team_usdt']) {
+            if (BigInt(user.sub_usdt) >= BigInt(config['team_level1_sub_usdt']) && BigInt(user.team_usdt) >= BigInt(config['team_level1_team_usdt'])) {
               user.star = star
             }
           } else {
@@ -1317,13 +1268,20 @@ export default async function (fastify, opts) {
 
         // 更新用户信息
         const { sub_mud, sub_usdt, team_mud, team_usdt, pre_star, star, address } = user
-        db.prepare('UPDATE user SET sub_mud = ?, sub_usdt = ?, team_mud = ?, team_usdt = ?, star = ? WHERE address = ?').run(sub_mud, sub_usdt, team_mud, team_usdt, star, address)
+        db.prepare('UPDATE user SET sub_mud = ?, sub_usdt = ?, team_mud = ?, team_usdt = ?, star = ? WHERE address = ?').run(
+          sub_mud.toString(),
+          sub_usdt.toString(),
+          team_mud.toString(),
+          team_usdt.toString(),
+          star,
+          address
+        )
         if (star < pre_star) {
           db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
             address,
             MessageTypeRiseStar,
             '降级',
-            `由于${from}取回质押${humanReadable(mud)}MUD，您从${pre_star}星降级为${star}星`
+            `由于${from}取回质押${humanReadable(mud.toString())}MUD，您从${pre_star}星降级为${star}星`
           )
         }
       }
@@ -1332,7 +1290,7 @@ export default async function (fastify, opts) {
         delegate.address,
         MessageTypeConfirmUndelegate,
         '取回质押',
-        `您成功取回了质押的${humanReadable(mud)}MUD，实际返回 ${humanReadable(back_mud)}MUD，交易哈希为${hash}`
+        `您成功取回了质押的${humanReadable(mud.toString())}MUD，实际返回 ${humanReadable(back_mud.toString())}MUD，交易哈希为${hash}`
       )
     })
 
@@ -1416,26 +1374,31 @@ export default async function (fastify, opts) {
       }
     }
 
-    const stat = { address, claimed_usdt: 0, unclaimed_usdt: 0, unclaimed_mud: 0 }
+    const stat = { address, claimed_usdt: BigInt(0), unclaimed_usdt: BigInt(0), unclaimed_mud: BigInt(0) }
 
     const dynamic_claimed = db.prepare('SELECT SUM(usdt) AS usdt FROM dynamic_reward WHERE address = ? AND status = ? GROUP BY address').get(address, RewardClaimed)
     if (dynamic_claimed) {
-      stat.claimed_usdt = stat.claimed_usdt + dynamic_claimed.usdt
+      stat.claimed_usdt = stat.claimed_usdt + BigInt(dynamic_claimed.usdt)
     }
 
     const dynamic_unclaimed = db.prepare('SELECT SUM(usdt) AS usdt FROM dynamic_reward WHERE address = ? AND status = ? GROUP BY address').get(address, RewardUnclaim)
     if (dynamic_unclaimed) {
-      stat.unclaimed_usdt = stat.unclaimed_usdt + dynamic_unclaimed.usdt
+      stat.unclaimed_usdt = stat.unclaimed_usdt + BigInt(dynamic_unclaimed.usdt)
     }
 
     const { buy_mud_wei } = await mudPrice()
-    const mud = parseInt((stat.unclaimed_usdt * TokenWei) / buy_mud_wei)
+    const mud = (stat.unclaimed_usdt * BigInt(TokenWei)) / BigInt(buy_mud_wei)
     stat.unclaimed_mud = mud
 
     return {
       code: 0,
       msg: '',
-      data: stat
+      data: {
+        address: stat.address,
+        claimed_usdt: stat.claimed_usdt.toString(),
+        unclaimed_usdt: stat.unclaimed_usdt.toString(),
+        unclaimed_mud: stat.unclaimed_mud.toString()
+      }
     }
   })
 
@@ -1480,33 +1443,40 @@ export default async function (fastify, opts) {
       }
     }
 
-    const stat = { address, claimed_usdt: 0, unclaimed_usdt: 0, unclaimed_mud: 0, locked_usdt: 0, locked_mud: 0 }
+    const stat = { address, claimed_usdt: BigInt(0), unclaimed_usdt: BigInt(0), unclaimed_mud: BigInt(0), locked_usdt: BigInt(0), locked_mud: BigInt(0) }
 
     const static_claimed = db.prepare('SELECT SUM(usdt) AS usdt FROM static_reward WHERE address = ? AND status = ? GROUP BY address').get(address, RewardClaimed)
     if (static_claimed) {
-      stat.claimed_usdt = stat.claimed_usdt + static_claimed.usdt
+      stat.claimed_usdt = stat.claimed_usdt + BigInt(static_claimed.usdt)
     }
 
     const static_unclaimed = db
       .prepare(`SELECT SUM(usdt) AS usdt FROM static_reward WHERE address = ? AND status = ? AND unlock_time <= strftime('%s', 'now') GROUP BY address`)
       .get(address, RewardUnclaim)
     if (static_unclaimed) {
-      stat.unclaimed_usdt = stat.unclaimed_usdt + static_unclaimed.usdt
+      stat.unclaimed_usdt = stat.unclaimed_usdt + BigInt(static_unclaimed.usdt)
     }
 
     const static_locked = db.prepare(`SELECT SUM(usdt) AS usdt FROM static_reward WHERE address = ? AND unlock_time > strftime('%s', 'now') GROUP BY address`).get(address)
     if (static_locked) {
-      stat.locked_usdt = stat.locked_usdt + static_locked.usdt
+      stat.locked_usdt = stat.locked_usdt + BigInt(static_locked.usdt)
     }
 
     const { buy_mud_wei } = await mudPrice()
-    stat.unclaimed_mud = parseInt((stat.unclaimed_usdt * TokenWei) / buy_mud_wei)
-    stat.locked_mud = parseInt((stat.locked_usdt * TokenWei) / buy_mud_wei)
+    stat.unclaimed_mud = (stat.unclaimed_usdt * BigInt(TokenWei)) / BigInt(buy_mud_wei)
+    stat.locked_mud = (stat.locked_usdt * BigInt(TokenWei)) / BigInt(buy_mud_wei)
 
     return {
       code: 0,
       msg: '',
-      data: stat
+      data: {
+        address: stat.address,
+        claimed_usdt: stat.claimed_usdt.toString(),
+        unclaimed_usdt: stat.unclaimed_usdt.toString(),
+        unclaimed_mud: stat.unclaimed_mud.toString(),
+        locked_usdt: stat.locked_usdt.toString(),
+        locked_mud: stat.locked_mud.toString()
+      }
     }
   })
 
@@ -1526,26 +1496,30 @@ export default async function (fastify, opts) {
       }
     }
 
-    const stat = { address, usdt: 0, mud: 0 }
+    const stat = { address, usdt: BigInt(0), mud: BigInt(0) }
 
     const dynamic_stat = db.prepare('SELECT address, SUM(usdt) AS usdt FROM dynamic_reward WHERE address = ? GROUP BY address').get(address)
     if (dynamic_stat) {
-      stat.usdt = stat.usdt + dynamic_stat.usdt
+      stat.usdt = stat.usdt + BigInt(dynamic_stat.usdt)
     }
 
     const static_stat = db.prepare('SELECT address, SUM(usdt) AS usdt FROM static_reward WHERE address = ? GROUP BY address').get(address)
     if (static_stat) {
-      stat.usdt = stat.usdt + static_stat.usdt
+      stat.usdt = stat.usdt + BigInt(static_stat.usdt)
     }
 
     const { buy_mud_wei } = await mudPrice()
-    const mud = parseInt((stat.usdt * TokenWei) / buy_mud_wei)
+    const mud = (stat.usdt * BigInt(TokenWei)) / BigInt(buy_mud_wei)
     stat.mud = mud
 
     reply.send({
       code: 0,
       msg: '',
-      data: stat
+      data: {
+        address: stat.address,
+        usdt: stat.usdt.toString(),
+        mud: stat.mud.toString()
+      }
     })
   })
 
@@ -1635,40 +1609,39 @@ export default async function (fastify, opts) {
         msg: '',
         data: {
           usdt: claim.usdt,
-          mud: parseInt((claim.usdt * TokenWei) / buy_mud_wei),
+          mud: (BigInt(claim.usdt) * BigInt(TokenWei)) / BigInt(buy_mud_wei),
           reward_ids: JSON.parse(claim.reward_ids),
           is_sign: true
         }
       }
     }
 
-    let tatal_usdt = 0
+    let tatal_usdt = BigInt(0)
 
-    // claim 表没有签名的待领取列表，我们得去计算
-    let static_reward_ids = []
+    // 计算静态奖励
     const static_rewards = db.prepare(`SELECT id, usdt FROM static_reward WHERE address = ? AND status = ? AND unlock_time < strftime('%s', 'now')`).all(address, RewardUnclaim)
     for (const reward of static_rewards) {
       const { id, usdt } = reward
       static_reward_ids.push(id)
-      tatal_usdt += usdt
+      tatal_usdt += BigInt(usdt)
     }
 
-    let dynamic_reward_ids = []
+    // 计算动态奖励
     const dynamic_rewards = db.prepare(`SELECT id, usdt FROM dynamic_reward WHERE address = ? AND status = ?`).all(address, RewardUnclaim)
     for (const reward of dynamic_rewards) {
       const { id, usdt } = reward
       dynamic_reward_ids.push(id)
-      tatal_usdt += usdt
+      tatal_usdt += BigInt(usdt)
     }
 
-    const mud = parseInt((tatal_usdt * TokenWei) / buy_mud_wei)
+    const mud = (tatal_usdt * BigInt(TokenWei)) / BigInt(buy_mud_wei)
 
     return {
       code: 0,
       msg: '',
       data: {
-        usdt: tatal_usdt,
-        mud,
+        usdt: tatal_usdt.toString(),
+        mud: mud.toString(),
         reward_ids: { dynamic_ids: dynamic_reward_ids, static_ids: static_reward_ids }
       }
     }
@@ -1714,11 +1687,10 @@ export default async function (fastify, opts) {
           msg: '',
           data: { address, usdt, min_mud, reward_ids, signature, deadline }
         }
-      }
     }
 
     // reward_ids 是用户去领取了哪些奖励id，比如 "{dynamic_ids:[1,5,6], static_ids:[1,8,9]}"
-    let total_usdt = 0
+    let total_usdt = BigInt(0)
     const { static_ids, dynamic_ids } = reward_ids
     console.log({ static_ids, dynamic_ids })
     if (Array.isArray(static_ids) && static_ids.length > 0) {
@@ -1728,7 +1700,7 @@ export default async function (fastify, opts) {
 
       for (const reward of static_rewards) {
         const { usdt } = reward
-        total_usdt += usdt
+        total_usdt += BigInt(usdt)
       }
     }
 
@@ -1739,11 +1711,11 @@ export default async function (fastify, opts) {
 
       for (const reward of dynamic_rewards) {
         const { usdt } = reward
-        total_usdt += usdt
+        total_usdt += BigInt(usdt)
       }
     }
 
-    if (total_usdt !== usdt) {
+    if (total_usdt !== BigInt(usdt)) {
       return {
         code: ErrorBusinessCode,
         msg: 'input parameter usdt verification failed',
@@ -1911,12 +1883,16 @@ export default async function (fastify, opts) {
 
     let stat = db.prepare('SELECT address, SUM(mud) AS mud, SUM(usdt) AS usdt FROM claim WHERE address = ? AND status = ? GROUP BY address').get(address, ClaimStatusReceived)
     if (!stat) {
-      stat = { address, mud: 0, usdt: 0 }
+      stat = { address, mud: BigInt(0), usdt: BigInt(0) }
     }
     reply.send({
       code: 0,
       msg: '',
-      data: stat
+      data: {
+        address: stat.address,
+        mud: stat.mud.toString(),
+        usdt: stat.usdt.toString()
+      }
     })
   })
 
@@ -1969,8 +1945,8 @@ export default async function (fastify, opts) {
     const from = receipt.from.toLowerCase()
     // 处理交易失败
     let [usdt, min_mud, reward_ids, signature, deadline] = txDescription.args
-    usdt = parseInt(usdt)
-    min_mud = parseInt(min_mud)
+    usdt = BigInt(usdt.toString())
+    min_mud = BigInt(min_mud.toString())
     reward_ids = JSON.parse(reward_ids)
     deadline = parseInt(deadline)
     console.log(txDescription.args, deadline)
@@ -1982,13 +1958,13 @@ export default async function (fastify, opts) {
         from,
         MessageTypeConfirmClaim,
         '奖励领取',
-        `您领取的${humanReadable(claim.mud)}MUD交易失败，交易哈希为${hash}`
+        `您领取的${humanReadable(claim.mud.toString())}MUD交易失败，交易哈希为${hash}`
       )
       if (claim) {
         db.prepare('UPDATE claim SET address = ?, usdt = ?, min_mud = ?, reward_ids = ?, status = ?, signature = ?, claim_time = ?, deadline = ? WHERE hash = ?').run(
           from,
-          usdt,
-          min_mud,
+          usdt.toString(),
+          min_mud.toString(),
           reward_ids,
           ClaimStatusReceiveFailed,
           signature,
@@ -1999,8 +1975,8 @@ export default async function (fastify, opts) {
       } else {
         db.prepare('INSERT INTO claim (address, usdt, min_mud, reward_ids, status, signature, claim_time, deadline, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
           from,
-          usdt,
-          min_mud,
+          usdt.toString(),
+          min_mud.toString(),
           reward_ids,
           ClaimStatusReceiveFailed,
           signature,
@@ -2054,19 +2030,19 @@ export default async function (fastify, opts) {
     //     string signature
     // );
     const cid = parseInt(logArgs[1])
-    const mud = parseInt(logArgs[3])
+    const mud = BigInt(logArgs[3].toString())
     const transaction = db.transaction(() => {
       if (claim) {
         db.prepare(
           'UPDATE claim SET cid = ?, address = ?, usdt = ?, min_mud = ?, mud = ?, reward_ids = ?, status = ?, hash = ?, claim_time = ?, deadline = ? WHERE signature = ?'
-        ).run(cid, from, usdt, min_mud, mud, JSON.stringify(reward_ids), ClaimStatusReceived, hash, now(), deadline, signature)
+        ).run(cid, from, usdt.toString(), min_mud.toString(), mud.toString(), JSON.stringify(reward_ids), ClaimStatusReceived, hash, now(), deadline, signature)
       } else {
         db.prepare('INSERT INTO claim (cid, address, usdt, min_mud, mud, reward_ids, status, signature, claim_time, deadline, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
           cid,
           from,
-          usdt,
-          min_mud,
-          mud,
+          usdt.toString(),
+          min_mud.toString(),
+          mud.toString(),
           JSON.stringify(reward_ids),
           ClaimStatusReceived,
           signature,
@@ -2090,7 +2066,7 @@ export default async function (fastify, opts) {
         from,
         MessageTypeConfirmClaim,
         '奖励领取',
-        `恭喜您成功领取了${humanReadable(mud)}MUD，对应价值为${humanReadable(usdt)}USDT，交易哈希为${hash}`
+        `恭喜您成功领取了${humanReadable(mud.toString())}MUD，对应价值为${humanReadable(usdt.toString())}USDT，交易哈希为${hash}`
       )
     })
     transaction()

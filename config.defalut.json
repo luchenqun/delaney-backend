@@ -1,7 +1,6 @@
 {
   "rpc": "http://127.0.0.1:8545",
   "poolAddress": "0x546bc6E008689577C69C42b9C1f6b4C923f59B5d",
-  "mudAddress": "0xDad56A6B5eed8567Fc4395d05b59D15077c2c888",
   "delaneyAddress": "0x33Add53fb1CDeF4A10BeE7249b66a685200DDd2f",
   "signerPrivateKey": "YOU_SIGNER_PRIVATEKEY",
   "adminAddressList": [

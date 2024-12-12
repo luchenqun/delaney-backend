@@ -30,69 +30,6 @@ export const randRef = (len = 6) => {
   return ref
 }
 
-// 获取mud的价格
-const getPrice = (sqrtPriceX96, decimal0, decimal1) => {
-  sqrtPriceX96 = bn(sqrtPriceX96)
-  decimal0 = bn(decimal0)
-  decimal1 = bn(decimal1)
-
-  const buyOneOfToken0 = sqrtPriceX96
-    .div(bn(2).pow(96))
-    .pow(2)
-    .div(bn(10).pow(decimal1.toNumber()).div(bn(10).pow(decimal0.toNumber())))
-  const buyOneOfToken1 = bn(1).div(buyOneOfToken0)
-
-  const fee = 0.994
-  const buyUsdt = parseFloat(parseFloat(buyOneOfToken0.toFixed(6) * fee).toFixed(6))
-  const buyMud = parseFloat(parseFloat(buyOneOfToken1.toFixed(6) * fee).toFixed(6))
-  const buyUsdtWei = buyUsdt * 10 ** parseInt(decimal0)
-  const buyMudWei = buyMud * 10 ** parseInt(decimal1)
-  const price = {
-    buy_usdt: buyUsdt,
-    buy_mud: buyMud,
-    buy_usdt_wei: buyUsdtWei,
-    buy_mud_wei: buyMudWei
-  }
-  return price
-}
-
-export const mudPrice = async (blockTag) => {
-  const poolAbi = [
-    {
-      inputs: [],
-      name: 'slot0',
-      outputs: [
-        { internalType: 'uint160', name: 'sqrtPriceX96', type: 'uint160' },
-        { internalType: 'int24', name: 'tick', type: 'int24' },
-        { internalType: 'uint16', name: 'observationIndex', type: 'uint16' },
-        { internalType: 'uint16', name: 'observationCardinality', type: 'uint16' },
-        { internalType: 'uint16', name: 'observationCardinalityNext', type: 'uint16' },
-        { internalType: 'uint8', name: 'feeProtocol', type: 'uint8' },
-        { internalType: 'bool', name: 'unlocked', type: 'bool' }
-      ],
-      stateMutability: 'view',
-      type: 'function'
-    }
-  ]
-
-  const poolContract = new ethers.Contract(poolAddress, poolAbi, provider)
-  const slot0 = await poolContract.slot0({ blockTag })
-  const decimal0 = '6' // MUD小数点
-  const decimal1 = '6' // USDT小数点
-  const price = getPrice(slot0.sqrtPriceX96.toString(), decimal0, decimal1)
-
-  const block = await provider.getBlock(blockTag, false)
-
-  return {
-    ...price,
-    timestamp: block.timestamp,
-    number: block.number,
-    hash: block.hash,
-    time: new Date(block.timestamp * 1000).toISOString(),
-    sqrt_price_x96: slot0.sqrtPriceX96.toString()
-  }
-}
-
 export const pageSql = (table, page, page_size, sort_field, sort_order, filters) => {
   let sql_base = `SELECT * FROM ${table}`
   if (filters) {
@@ -166,9 +103,8 @@ export const recoverAddress = (signature, message) => {
   return signer
 }
 
-export const humanReadable = (value, precision = 1000000n) => {
+export const humanReadable = (value, precision = 1000000000000000000n) => {
   value = BigInt(value)
-  precision = precision || 1000000n
   const result = ((value * 100n) / precision).toString() // 将结果扩大100倍以保留两位小数
   const integerPart = result.slice(0, -2) || '0' // 获取整数部分
   const decimalPart = result.slice(-2) // 获取小数部分
