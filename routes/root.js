@@ -29,7 +29,7 @@ import {
   MessageTypeStaticReward,
   MessageTypeRiseStar
 } from '../utils/constant.js'
-import { randRef, rpc, provider, delaney, delaneyAddress, signerPrivateKey, signerAddress, now, adminAddressList } from '../utils/index.js'
+import { randRef, rpc, provider, delaney, delaneyAddress, usdtAddress, signerPrivateKey, signerAddress, now, adminAddressList } from '../utils/index.js'
 
 const UsdtPrecision = 1000000n
 const MudPrecision = 1000000000000000000n
@@ -182,7 +182,20 @@ export default async function (fastify, opts) {
         const wallet = new ethers.Wallet(privateKey, provider)
         const balance = await provider.getBalance(address)
         if (balance < 10n * MudPrecision) {
-          const tx = await wallet.sendTransaction({ to: address, value: 1000n * MudPrecision })
+          const amount = BigInt(Math.floor(Math.random() * 10 + 10)) * MudPrecision
+          const tx = await wallet.sendTransaction({ to: address, value: amount })
+          await tx.wait()
+        }
+        // 随机转1 ~ 10个USDT
+        const usdt = new ethers.Contract(
+          usdtAddress,
+          ['function balanceOf(address) view returns (uint256)', 'function transfer(address to, uint256 amount) returns (bool)'],
+          wallet
+        )
+        const usdtBalance = await usdt.balanceOf(address)
+        if (usdtBalance < UsdtPrecision) {
+          const amount = BigInt(Math.floor(Math.random() * 10 + 1)) * UsdtPrecision
+          const tx = await usdt.transfer(address, amount)
           await tx.wait()
         }
       }

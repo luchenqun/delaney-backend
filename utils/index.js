@@ -4,7 +4,7 @@ import fs from 'fs-extra'
 import { ReceiptFail } from './constant.js'
 
 const SevenDaySeconds = 7 * 24 * 3600
-const { rpc, poolAddress, mudAddress, delaneyAddress, signerPrivateKey, adminAddressList } = fs.readJSONSync('config.json')
+const { rpc, usdtAddress, delaneyAddress, signerPrivateKey, adminAddressList } = fs.readJSONSync('config.json')
 const signerWallet = new ethers.Wallet(signerPrivateKey)
 // mud '0xf6EaC236757e82D6772E8bD02D36a0c791d78C51'
 // usdt '0x5338968f9646e4a865d76e07c2a6e340dd3ac462'
@@ -12,7 +12,7 @@ const signerWallet = new ethers.Wallet(signerPrivateKey)
 // 'https://polygon-mainnet.nodereal.io/v1/c6a4d008708642b097e1d7c9372a3b67'
 // 'https://omniscient-floral-wish.matic.quiknode.pro/c8744f4ef0f1f40210d5d68ac6170281c379b088'
 // 'http://127.0.0.1:8545'
-export { delaneyAddress, signerPrivateKey, rpc, mudAddress, adminAddressList }
+export { delaneyAddress, signerPrivateKey, rpc, usdtAddress, adminAddressList }
 export const provider = new ethers.JsonRpcProvider(rpc, undefined, { polling: true }) // https://github.com/ethers-io/ethers.js/issues/4104#issuecomment-1694486121
 export const delaneyAbi = fs.readJSONSync('./utils/delaney.json')
 export const delaney = new ethers.Contract(delaneyAddress, delaneyAbi, provider)
