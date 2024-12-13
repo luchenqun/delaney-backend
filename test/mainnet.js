@@ -31,10 +31,11 @@ const main = async () => {
   const delaneyArtifact = await fs.readJSON(path.join(contractDir, 'Delaney.sol/Delaney.json'))
   const { abi: delaneyAbi, bytecode: delaneyBytecode } = delaneyArtifact
 
-  const delaneyAddress = '0xDad56A6B5eed8567Fc4395d05b59D15077c2c888'
-  const usdtAddress = '0x592d157a0765b43b0192Ba28F4b8cd4F50E326cF'
+  const delaneyAddress = '0x7198751f431C6395c901b64b94477AC6A92083db'
   const pairAddress = '0x7F202fda32D43F726C77E2B3288e6c6f3e7e341A'
-  const delaneyDeploy = true
+  const usdtAddress = '0x592d157a0765b43b0192Ba28F4b8cd4F50E326cF'
+
+  const delaneyDeploy = false
 
   const rpc = 'https://testnet-rpc.mud-chain.net'
   const provider = new ethers.JsonRpcProvider(rpc)
@@ -47,6 +48,8 @@ const main = async () => {
   })
 
   let data
+
+  const deadline = 1888888888
 
   const privateKey = 'f78a036930ce63791ea6ea20072986d8c3f16a6811f6a2583b0787c45086f769'
   const owner = new ethers.Wallet(privateKey, provider)
@@ -71,10 +74,16 @@ const main = async () => {
     delaney = new ethers.Contract(delaneyAddress, delaneyAbi, owner)
   }
 
+  const tx = await delaney.setConfig('claim_min_usdt', 10000000) // 个人最小投资额度
+  await tx.wait()
+
+  return
+
   // 用户注册，我们要注册一个5层的用户列表，方便后面测试
   let parent_ref = '888888'
   let needSetStar = true
   for (const privateKey of privateKeys) {
+    break
     const delegator = new ethers.Wallet(privateKey, provider)
     try {
       // 查一下有没有这个用户，有就不要注册了
@@ -90,7 +99,7 @@ const main = async () => {
   }
 
   // 修改星级，为后面的奖励分配做好准备
-  if (needSetStar) {
+  if (needSetStar && false) {
     let star = 5
     let delegatorPrivateKeys = [privateKey].concat(...privateKeys)
     const message = String(parseInt(new Date().getTime() / 1000))
@@ -113,32 +122,32 @@ const main = async () => {
     }
   }
 
-  {
-    let tx
-    tx = await delaney.setConfig('preson_invest_min_usdt', 1) // 个人最小投资额度
-    await tx.wait()
+  // {
+  //   let tx
+  //   tx = await delaney.setConfig('preson_invest_min_usdt', 1) // 个人最小投资额度
+  //   await tx.wait()
 
-    tx = await delaney.setConfig('period_duration', 30) // 方便测试每个周期设为6秒
-    await tx.wait()
+  //   tx = await delaney.setConfig('period_duration', 30) // 方便测试每个周期设为6秒
+  //   await tx.wait()
 
-    tx = await delaney.setConfig('period_num', 3) // 方便测试一共3周期
-    await tx.wait()
+  //   tx = await delaney.setConfig('period_num', 3) // 方便测试一共3周期
+  //   await tx.wait()
 
-    tx = await delaney.setConfig('preson_reward_min_usdt', 0) // 个人奖励阈值
-    await tx.wait()
+  //   tx = await delaney.setConfig('preson_reward_min_usdt', 0) // 个人奖励阈值
+  //   await tx.wait()
 
-    tx = await delaney.setConfig('team_reward_min_usdt', 0) // 团队奖励阈值
-    await tx.wait()
+  //   tx = await delaney.setConfig('team_reward_min_usdt', 0) // 团队奖励阈值
+  //   await tx.wait()
 
-    tx = await delaney.setConfig('team_level1_sub_usdt', 1) // 成为1星的直推条件
-    await tx.wait()
+  //   tx = await delaney.setConfig('team_level1_sub_usdt', 1) // 成为1星的直推条件
+  //   await tx.wait()
 
-    tx = await delaney.setConfig('team_level1_team_usdt', 1) // 成为1星的团队条件
-    await tx.wait()
+  //   tx = await delaney.setConfig('team_level1_team_usdt', 1) // 成为1星的团队条件
+  //   await tx.wait()
 
-    tx = await delaney.setConfig('claim_min_usdt', 1000000) // 奖励领取阈值
-    await tx.wait()
-  }
+  //   tx = await delaney.setConfig('claim_min_usdt', 1000000) // 奖励领取阈值
+  //   await tx.wait()
+  // }
 
   // 用户跟链交互进行质押
   {
