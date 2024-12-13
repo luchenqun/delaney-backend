@@ -63,6 +63,7 @@ export const now = () => {
 export const getConfigs = async () => {
   const configs = await delaney.getConfigs()
   const keys = [
+    'fee',
     'period_duration',
     'period_num',
     'period_reward_ratio',
@@ -79,8 +80,9 @@ export const getConfigs = async () => {
     'preson_invest_min_usdt',
     'preson_reward_min_usdt',
     'team_reward_min_usdt',
-    'fee',
     'claim_min_usdt',
+    'claim_max_usdt',
+    'claim_gap',
     'team_level1_sub_usdt',
     'team_level1_team_usdt'
   ]

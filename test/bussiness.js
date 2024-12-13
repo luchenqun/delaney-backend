@@ -29,9 +29,12 @@ const sleep = (ms) => {
 
 const main = async () => {
   const delaneyArtifact = await fs.readJSON(path.join(contractDir, 'Delaney.sol/Delaney.json'))
+  const pairArtifact = await fs.readJSON(path.join(contractDir, 'UniswapV2Pair.sol/UniswapV2Pair.json'))
   const { abi: delaneyAbi, bytecode: delaneyBytecode } = delaneyArtifact
-  const poolAddress = '0x546bc6E008689577C69C42b9C1f6b4C923f59B5d'
+  const { abi: pairAbi, bytecode: pairBytecode } = pairArtifact
+  const pairAddress = '0x546bc6E008689577C69C42b9C1f6b4C923f59B5d'
   const delaneyAddress = '0xDad56A6B5eed8567Fc4395d05b59D15077c2c888'
+  const usdtAddress = '0x592d157a0765b43b0192Ba28F4b8cd4F50E326cF'
 
   const rpc = 'http://127.0.0.1:8545'
   const provider = new ethers.JsonRpcProvider(rpc)
@@ -93,13 +96,13 @@ const main = async () => {
   // }
 
   // 部署合约
-  const pool = (await provider.getCode(poolAddress)).length > 2 ? new ethers.Contract(poolAddress, poolAbi, owner) : await deploy(owner, poolAbi, poolBytecode)
-  console.log('contract pool address = ', pool.target)
+  const pair = (await provider.getCode(pairAddress)).length > 2 ? new ethers.Contract(pairAddress, pairAbi, owner) : await deploy(owner, pairAbi, pairBytecode)
+  console.log('contract pair address = ', pair.target)
 
   const delaney =
     (await provider.getCode(delaneyAddress)).length > 2
       ? new ethers.Contract(delaneyAddress, delaneyAbi, owner)
-      : await deploy(owner, delaneyAbi, delaneyBytecode, [owner.address, owner.address, pool.target])
+      : await deploy(owner, delaneyAbi, delaneyBytecode, [owner.address, owner.address, pair.target, usdtAddress])
   console.log('contract delaney address = ', delaney.target)
 
   {
@@ -138,7 +141,7 @@ const main = async () => {
     parent_ref = data.ref
   }
 
-  // ��改星级，为后面的奖励分配做好准备
+  // 修改星级，为后面的奖励分配做好准备
   if (needSetStar) {
     let star = 5
     let delegatorPrivateKeys = [privateKey].concat(...privateKeys)
@@ -186,7 +189,12 @@ const main = async () => {
 
   // 用户获取最新的奖励信息
   {
-    await sleep(15000) // 等待3秒有静态奖励产出
+    {
+      const tx = await owner.sendTransaction({ to: owner.address, value: 1 })
+      await tx.wait()
+    }
+    await sleep(6000) // 等待3秒有静态奖励产出
+
     console.log('now is', parseInt(new Date().getTime() / 1000))
     data = decodeReply(await client.get(`/latest-claim?address=${owner.address}`))
     console.log('latest-claim', data)
@@ -210,11 +218,15 @@ const main = async () => {
 
   // 用户跟链交互复投（重新质押）
   if (true) {
+    {
+      const tx = await owner.sendTransaction({ to: owner.address, value: 1 })
+      await tx.wait()
+    }
     const deletagors = [delegator, owner]
     let cid = 0
     for (const delegator of deletagors) {
       // 发送交易
-      const tx = await delaney.connect(delegator).redelegate(cid++, deadline, { value: 0 }) // 复投不需要额外转token
+      const tx = await delaney.connect(delegator).redelegate(cid++, deadline) // 复投不需要额外转token
       await tx.wait()
 
       data = decodeReply(await client.post('/confirm-redelegate', { hash: tx.hash }))
@@ -225,7 +237,7 @@ const main = async () => {
   // 用户跟链交互取消质押
   if (true) {
     // 因为价格没变，但是领走了奖励，所以项目方需要存mud进去才够用户取消质押
-    let tx = await delaney.connect(owner).deposit(10000n * 1000000000000000000n)
+    let tx = await delaney.connect(owner).deposit({ value: 10000n * 1000000000000000000n })
     await tx.wait()
 
     await sleep(15000) // 上面复投了，不能马上取消质押
@@ -250,5 +262,5 @@ const main = async () => {
 main()
   .then(() => {})
   .catch((err) => {
-    console.log('err', JSON.stringify(err))
+    console.log('err', err, JSON.stringify(err))
   })

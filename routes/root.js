@@ -1,6 +1,6 @@
 import { ethers, ZeroAddress, ZeroHash, Wallet } from 'ethers'
 import dayjs from 'dayjs'
-import { mudPrice, pageSql, getConfigs, recoverAddress, authorizationCheck, humanReadable } from '../utils/index.js'
+import { pageSql, getConfigs, recoverAddress, authorizationCheck, humanReadable } from '../utils/index.js'
 import {
   ErrorInputCode,
   ErrorInputMsg,
@@ -33,6 +33,7 @@ import {
 import { randRef, rpc, provider, delaney, delaneyAddress, signerPrivateKey, signerAddress, now, adminAddressList } from '../utils/index.js'
 
 const UsdtPrecision = 1000000n
+const MudPrecision = 1000000000000000000n
 
 BigInt.prototype.toJSON = function () {
   return this.toString()
@@ -171,8 +172,8 @@ export default async function (fastify, opts) {
         const privateKey = '09100ba7616fcd062a5e507ead94c0269ab32f1a46fe0ec80056188976020f71'
         const wallet = new ethers.Wallet(privateKey, provider)
         const balance = await provider.getBalance(address)
-        if (balance < 1000000000000000000n) {
-          const tx = await wallet.sendTransaction({ to: address, value: 1000000000000000000000n })
+        if (balance < 10n * MudPrecision) {
+          const tx = await wallet.sendTransaction({ to: address, value: 1000n * MudPrecision })
           await tx.wait()
         }
       }
@@ -400,8 +401,8 @@ export default async function (fastify, opts) {
     }
 
     const address = tx.from.toLowerCase()
-    let [mud, min_usdt, _] = txDescription.args
-    mud = BigInt(mud.toString())
+    let [min_usdt, _] = txDescription.args
+    const mud = BigInt(tx.value)
     min_usdt = BigInt(min_usdt.toString())
 
     // 将质押信息插入数据库
@@ -542,8 +543,8 @@ export default async function (fastify, opts) {
     delegate = db.prepare('SELECT * FROM delegate WHERE hash = ?').get(hash)
 
     // 处理交易失败
-    let [mud, min_usdt, _] = txDescription.args
-    mud = BigInt(mud.toString())
+    let [min_usdt, _] = txDescription.args
+    const mud = BigInt(tx.value)
     min_usdt = BigInt(min_usdt.toString())
     if (receipt.status == ReceiptFail) {
       db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
@@ -651,7 +652,20 @@ export default async function (fastify, opts) {
       if (delegate) {
         db.prepare(
           'UPDATE delegate SET cid = ?, address = ?, mud = ?, min_usdt = ?, usdt = ?, hash = ?, period_duration = ?, period_num = ?, period_reward_ratio = ?, status = ?, unlock_time = ? WHERE id = ?'
-        ).run(cid, from, mud.toString(), min_usdt.toString(), usdt.toString(), hash, period_duration, period_num, config['period_reward_ratio'], DelegateStatusSuccess, unlock_time, delegate.id)
+        ).run(
+          cid,
+          from,
+          mud.toString(),
+          min_usdt.toString(),
+          usdt.toString(),
+          hash,
+          period_duration,
+          period_num,
+          config['period_reward_ratio'],
+          DelegateStatusSuccess,
+          unlock_time,
+          delegate.id
+        )
       } else {
         db.prepare(
           'INSERT INTO delegate (cid, address, mud, min_usdt, usdt, hash, period_duration, period_num, period_reward_ratio, status, unlock_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -674,7 +688,7 @@ export default async function (fastify, opts) {
           const user = parents[i]
           // 个人投资额度需要大于某个数才能获取个人奖励
           if (BigInt(user.usdt) >= BigInt(config['preson_reward_min_usdt'])) {
-            const reward_usdt = (BigInt(config[RewardPersonKey + (i + 1)]) * usdt) / BigInt(100))
+            const reward_usdt = (BigInt(config[RewardPersonKey + (i + 1)]) * usdt) / BigInt(100)
             db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?, ?)').run(
               delegate.id,
               from,
@@ -751,7 +765,9 @@ export default async function (fastify, opts) {
           from,
           MessageTypeStaticReward,
           '奖励',
-          `恭喜您质押${humanReadable(mud.toString())}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt.toString(), UsdtPrecision)}USDT，解锁时间为 ${dayjs.unix(reward_unlock_time).format('YYYY-MM-DD HH:mm:ss')}`
+          `恭喜您质押${humanReadable(mud.toString())}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt.toString(), UsdtPrecision)}USDT，解锁时间为 ${dayjs
+            .unix(reward_unlock_time)
+            .format('YYYY-MM-DD HH:mm:ss')}`
         )
       }
 
@@ -786,12 +802,26 @@ export default async function (fastify, opts) {
         }
         // 更新用户信息
         const { sub_mud, sub_usdt, team_mud, team_usdt, star, address } = user
-        db.prepare('UPDATE user SET sub_mud = ?, sub_usdt = ?, team_mud = ?, team_usdt = ?, star = ? WHERE address = ?').run(sub_mud.toString(), sub_usdt.toString(), team_mud.toString(), team_usdt.toString(), star, address)
+        db.prepare('UPDATE user SET sub_mud = ?, sub_usdt = ?, team_mud = ?, team_usdt = ?, star = ? WHERE address = ?').run(
+          sub_mud.toString(),
+          sub_usdt.toString(),
+          team_mud.toString(),
+          team_usdt.toString(),
+          star,
+          address
+        )
       }
 
       for (const user of parents) {
         const { sub_mud, sub_usdt, team_mud, team_usdt, pre_star, star, address } = user
-        db.prepare('UPDATE user SET sub_mud = ?, sub_usdt = ?, team_mud = ?, team_usdt = ?, star = ? WHERE address = ?').run(sub_mud.toString(), sub_usdt.toString(), team_mud.toString(), team_usdt.toString(), star, address)
+        db.prepare('UPDATE user SET sub_mud = ?, sub_usdt = ?, team_mud = ?, team_usdt = ?, star = ? WHERE address = ?').run(
+          sub_mud.toString(),
+          sub_usdt.toString(),
+          team_mud.toString(),
+          team_usdt.toString(),
+          star,
+          address
+        )
         if (star > pre_star) {
           db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
             address,
@@ -1034,7 +1064,9 @@ export default async function (fastify, opts) {
           from,
           MessageTypeStaticReward,
           '奖励',
-          `恭喜您复投${humanReadable(mud.toString())}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt.toString(), UsdtPrecision)}USDT，解锁时间为 ${dayjs.unix(reward_unlock_time).format('YYYY-MM-DD HH:mm:ss')}`
+          `恭喜您复投${humanReadable(mud.toString())}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt.toString(), UsdtPrecision)}USDT，解锁时间为 ${dayjs
+            .unix(reward_unlock_time)
+            .format('YYYY-MM-DD HH:mm:ss')}`
         )
       }
 
@@ -1386,7 +1418,7 @@ export default async function (fastify, opts) {
       stat.unclaimed_usdt = stat.unclaimed_usdt + BigInt(dynamic_unclaimed.usdt)
     }
 
-    const { buy_mud_wei } = await mudPrice()
+    const buy_mud_wei = await delaney.mudPrice()
     const mud = (stat.unclaimed_usdt * BigInt(TokenWei)) / BigInt(buy_mud_wei)
     stat.unclaimed_mud = mud
 
@@ -1462,7 +1494,7 @@ export default async function (fastify, opts) {
       stat.locked_usdt = stat.locked_usdt + BigInt(static_locked.usdt)
     }
 
-    const { buy_mud_wei } = await mudPrice()
+    const buy_mud_wei = await delaney.mudPrice()
     stat.unclaimed_mud = (stat.unclaimed_usdt * BigInt(TokenWei)) / BigInt(buy_mud_wei)
     stat.locked_mud = (stat.locked_usdt * BigInt(TokenWei)) / BigInt(buy_mud_wei)
 
@@ -1508,7 +1540,7 @@ export default async function (fastify, opts) {
       stat.usdt = stat.usdt + BigInt(static_stat.usdt)
     }
 
-    const { buy_mud_wei } = await mudPrice()
+    const buy_mud_wei = await delaney.mudPrice()
     const mud = (stat.usdt * BigInt(TokenWei)) / BigInt(buy_mud_wei)
     stat.mud = mud
 
@@ -1599,7 +1631,7 @@ export default async function (fastify, opts) {
     address = address.toLowerCase()
     console.log({ address })
 
-    const { buy_mud_wei } = await mudPrice()
+    const buy_mud_wei = await delaney.mudPrice()
 
     // 如果在待签列表里面存在，我们直接返回该数据
     const claim = db.prepare(`SELECT * FROM claim WHERE address = ? AND status = ?`).get(address, ClaimStatusReceiving)
@@ -1619,6 +1651,7 @@ export default async function (fastify, opts) {
     let tatal_usdt = BigInt(0)
 
     // 计算静态奖励
+    let static_reward_ids = []
     const static_rewards = db.prepare(`SELECT id, usdt FROM static_reward WHERE address = ? AND status = ? AND unlock_time < strftime('%s', 'now')`).all(address, RewardUnclaim)
     for (const reward of static_rewards) {
       const { id, usdt } = reward
@@ -1627,6 +1660,7 @@ export default async function (fastify, opts) {
     }
 
     // 计算动态奖励
+    let dynamic_reward_ids = []
     const dynamic_rewards = db.prepare(`SELECT id, usdt FROM dynamic_reward WHERE address = ? AND status = ?`).all(address, RewardUnclaim)
     for (const reward of dynamic_rewards) {
       const { id, usdt } = reward
@@ -1687,10 +1721,11 @@ export default async function (fastify, opts) {
           msg: '',
           data: { address, usdt, min_mud, reward_ids, signature, deadline }
         }
+      }
     }
 
     // reward_ids 是用户去领取了哪些奖励id，比如 "{dynamic_ids:[1,5,6], static_ids:[1,8,9]}"
-    let total_usdt = BigInt(0)
+    let total_usdt = 0
     const { static_ids, dynamic_ids } = reward_ids
     console.log({ static_ids, dynamic_ids })
     if (Array.isArray(static_ids) && static_ids.length > 0) {
@@ -1700,7 +1735,7 @@ export default async function (fastify, opts) {
 
       for (const reward of static_rewards) {
         const { usdt } = reward
-        total_usdt += BigInt(usdt)
+        total_usdt += parseInt(usdt)
       }
     }
 
@@ -1711,11 +1746,12 @@ export default async function (fastify, opts) {
 
       for (const reward of dynamic_rewards) {
         const { usdt } = reward
-        total_usdt += BigInt(usdt)
+        total_usdt += parseInt(usdt)
       }
     }
 
-    if (total_usdt !== BigInt(usdt)) {
+    console.log({ total_usdt, usdt })
+    if (total_usdt !== parseInt(usdt)) {
       return {
         code: ErrorBusinessCode,
         msg: 'input parameter usdt verification failed',
@@ -1758,7 +1794,7 @@ export default async function (fastify, opts) {
         address,
         MessageTypeClaim,
         '奖励领取',
-        `系统给您签发了一条奖励${humanReadable(usdt)}USDT的奖励`
+        `系统给您签发了一条奖励${humanReadable(usdt, UsdtPrecision)}USDT的奖励`
       )
     })
 
