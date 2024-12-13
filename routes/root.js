@@ -39,6 +39,16 @@ BigInt.prototype.toJSON = function () {
   return this.toString()
 }
 
+// mudToUsdt
+function mudToUsdt(mud, mud_price) {
+  return (BigInt(mud) * BigInt(mud_price)) / MudPrecision
+}
+
+// usdtToMud
+function usdtToMud(usdt, mud_price) {
+  return (BigInt(usdt) * MudPrecision) / BigInt(mud_price)
+}
+
 export default async function (fastify, opts) {
   fastify.get('/', async function (request, reply) {
     return { root: true }
@@ -470,11 +480,23 @@ export default async function (fastify, opts) {
         data: {}
       }
     }
+    // 获取所有质押记录
+    const delegates = db.prepare('SELECT * FROM delegate WHERE address = ? AND status = ?').all(address, DelegateStatusSuccess)
 
-    let stat = db.prepare('SELECT address, SUM(mud) AS mud, SUM(usdt) AS usdt FROM delegate WHERE address = ? AND status = ? GROUP BY address').get(address, DelegateStatusSuccess)
-    if (!stat) {
-      stat = { address, mud: 0, usdt: 0 }
+    // 累加计算总量
+    let totalMud = BigInt(0)
+    let totalUsdt = BigInt(0)
+    for (const delegate of delegates) {
+      totalMud += BigInt(delegate.mud)
+      totalUsdt += BigInt(delegate.usdt)
     }
+
+    const stat = {
+      address,
+      mud: totalMud.toString(),
+      usdt: totalUsdt.toString()
+    }
+    console.log({ stat })
     reply.send({
       code: 0,
       msg: '',
@@ -1410,18 +1432,18 @@ export default async function (fastify, opts) {
 
     const stat = { address, claimed_usdt: BigInt(0), unclaimed_usdt: BigInt(0), unclaimed_mud: BigInt(0) }
 
-    const dynamic_claimed = db.prepare('SELECT SUM(usdt) AS usdt FROM dynamic_reward WHERE address = ? AND status = ? GROUP BY address').get(address, RewardClaimed)
-    if (dynamic_claimed) {
-      stat.claimed_usdt = stat.claimed_usdt + BigInt(dynamic_claimed.usdt)
+    const dynamic_claimed_rewards = db.prepare('SELECT usdt FROM dynamic_reward WHERE address = ? AND status = ?').all(address, RewardClaimed)
+    for (const reward of dynamic_claimed_rewards) {
+      stat.claimed_usdt = stat.claimed_usdt + BigInt(reward.usdt)
     }
 
-    const dynamic_unclaimed = db.prepare('SELECT SUM(usdt) AS usdt FROM dynamic_reward WHERE address = ? AND status = ? GROUP BY address').get(address, RewardUnclaim)
-    if (dynamic_unclaimed) {
-      stat.unclaimed_usdt = stat.unclaimed_usdt + BigInt(dynamic_unclaimed.usdt)
+    const dynamic_unclaimed_rewards = db.prepare('SELECT usdt FROM dynamic_reward WHERE address = ? AND status = ?').all(address, RewardUnclaim)
+    for (const reward of dynamic_unclaimed_rewards) {
+      stat.unclaimed_usdt = stat.unclaimed_usdt + BigInt(reward.usdt)
     }
 
-    const buy_mud_wei = await delaney.mudPrice()
-    const mud = (stat.unclaimed_usdt * BigInt(TokenWei)) / BigInt(buy_mud_wei)
+    const mud_price = await delaney.mudPrice()
+    const mud = usdtToMud(stat.unclaimed_usdt, mud_price)
     stat.unclaimed_mud = mud
 
     return {
@@ -1479,26 +1501,30 @@ export default async function (fastify, opts) {
 
     const stat = { address, claimed_usdt: BigInt(0), unclaimed_usdt: BigInt(0), unclaimed_mud: BigInt(0), locked_usdt: BigInt(0), locked_mud: BigInt(0) }
 
-    const static_claimed = db.prepare('SELECT SUM(usdt) AS usdt FROM static_reward WHERE address = ? AND status = ? GROUP BY address').get(address, RewardClaimed)
-    if (static_claimed) {
-      stat.claimed_usdt = stat.claimed_usdt + BigInt(static_claimed.usdt)
+    const static_claimed = db.prepare('SELECT usdt FROM static_reward WHERE address = ? AND status = ?').all(address, RewardClaimed)
+    if (static_claimed && static_claimed.length > 0) {
+      for (const item of static_claimed) {
+        stat.claimed_usdt = stat.claimed_usdt + BigInt(item.usdt)
+      }
     }
 
-    const static_unclaimed = db
-      .prepare(`SELECT SUM(usdt) AS usdt FROM static_reward WHERE address = ? AND status = ? AND unlock_time <= strftime('%s', 'now') GROUP BY address`)
-      .get(address, RewardUnclaim)
-    if (static_unclaimed) {
-      stat.unclaimed_usdt = stat.unclaimed_usdt + BigInt(static_unclaimed.usdt)
+    const static_unclaimed = db.prepare(`SELECT usdt FROM static_reward WHERE address = ? AND status = ? AND unlock_time <= strftime('%s', 'now')`).all(address, RewardUnclaim)
+    if (static_unclaimed && static_unclaimed.length > 0) {
+      for (const item of static_unclaimed) {
+        stat.unclaimed_usdt = stat.unclaimed_usdt + BigInt(item.usdt)
+      }
     }
 
-    const static_locked = db.prepare(`SELECT SUM(usdt) AS usdt FROM static_reward WHERE address = ? AND unlock_time > strftime('%s', 'now') GROUP BY address`).get(address)
-    if (static_locked) {
-      stat.locked_usdt = stat.locked_usdt + BigInt(static_locked.usdt)
+    const static_locked = db.prepare(`SELECT usdt FROM static_reward WHERE address = ? AND unlock_time > strftime('%s', 'now')`).all(address)
+    if (static_locked && static_locked.length > 0) {
+      for (const item of static_locked) {
+        stat.locked_usdt = stat.locked_usdt + BigInt(item.usdt)
+      }
     }
 
-    const buy_mud_wei = await delaney.mudPrice()
-    stat.unclaimed_mud = (stat.unclaimed_usdt * BigInt(TokenWei)) / BigInt(buy_mud_wei)
-    stat.locked_mud = (stat.locked_usdt * BigInt(TokenWei)) / BigInt(buy_mud_wei)
+    const mud_price = await delaney.mudPrice()
+    stat.unclaimed_mud = usdtToMud(stat.unclaimed_usdt, mud_price)
+    stat.locked_mud = usdtToMud(stat.locked_usdt, mud_price)
 
     return {
       code: 0,
@@ -1532,18 +1558,22 @@ export default async function (fastify, opts) {
 
     const stat = { address, usdt: BigInt(0), mud: BigInt(0) }
 
-    const dynamic_stat = db.prepare('SELECT address, SUM(usdt) AS usdt FROM dynamic_reward WHERE address = ? GROUP BY address').get(address)
-    if (dynamic_stat) {
-      stat.usdt = stat.usdt + BigInt(dynamic_stat.usdt)
+    const dynamic_rewards = db.prepare('SELECT usdt FROM dynamic_reward WHERE address = ?').all(address)
+    if (dynamic_rewards && dynamic_rewards.length > 0) {
+      for (const item of dynamic_rewards) {
+        stat.usdt = stat.usdt + BigInt(item.usdt)
+      }
     }
 
-    const static_stat = db.prepare('SELECT address, SUM(usdt) AS usdt FROM static_reward WHERE address = ? GROUP BY address').get(address)
-    if (static_stat) {
-      stat.usdt = stat.usdt + BigInt(static_stat.usdt)
+    const static_rewards = db.prepare('SELECT usdt FROM static_reward WHERE address = ?').all(address)
+    if (static_rewards && static_rewards.length > 0) {
+      for (const item of static_rewards) {
+        stat.usdt = stat.usdt + BigInt(item.usdt)
+      }
     }
 
-    const buy_mud_wei = await delaney.mudPrice()
-    const mud = (stat.usdt * BigInt(TokenWei)) / BigInt(buy_mud_wei)
+    const mud_price = await delaney.mudPrice()
+    const mud = usdtToMud(stat.usdt, mud_price)
     stat.mud = mud
 
     reply.send({
@@ -1633,7 +1663,7 @@ export default async function (fastify, opts) {
     address = address.toLowerCase()
     console.log({ address })
 
-    const buy_mud_wei = await delaney.mudPrice()
+    const mud_price = await delaney.mudPrice()
 
     // 如果在待签列表里面存在，我们直接返回该数据
     const claim = db.prepare(`SELECT * FROM claim WHERE address = ? AND status = ?`).get(address, ClaimStatusReceiving)
@@ -1643,7 +1673,7 @@ export default async function (fastify, opts) {
         msg: '',
         data: {
           usdt: claim.usdt,
-          mud: (BigInt(claim.usdt) * BigInt(TokenWei)) / BigInt(buy_mud_wei),
+          mud: usdtToMud(claim.usdt, mud_price),
           reward_ids: JSON.parse(claim.reward_ids),
           is_sign: true
         }
@@ -1670,7 +1700,7 @@ export default async function (fastify, opts) {
       tatal_usdt += BigInt(usdt)
     }
 
-    const mud = (tatal_usdt * BigInt(TokenWei)) / BigInt(buy_mud_wei)
+    const mud = usdtToMud(tatal_usdt, mud_price)
 
     return {
       code: 0,
@@ -1919,10 +1949,14 @@ export default async function (fastify, opts) {
       }
     }
 
-    let stat = db.prepare('SELECT address, SUM(mud) AS mud, SUM(usdt) AS usdt FROM claim WHERE address = ? AND status = ? GROUP BY address').get(address, ClaimStatusReceived)
-    if (!stat) {
-      stat = { address, mud: BigInt(0), usdt: BigInt(0) }
+    const claims = db.prepare('SELECT mud, usdt FROM claim WHERE address = ? AND status = ?').all(address, ClaimStatusReceived)
+    let totalMud = BigInt(0)
+    let totalUsdt = BigInt(0)
+    for (const claim of claims) {
+      totalMud += BigInt(claim.mud)
+      totalUsdt += BigInt(claim.usdt)
     }
+    const stat = { address, mud: totalMud, usdt: totalUsdt }
     reply.send({
       code: 0,
       msg: '',
