@@ -1911,7 +1911,7 @@ export default async function (fastify, opts) {
       claim.address,
       MessageTypeClaim,
       '奖励领取',
-      `您正在领取${humanReadable(claim.usdt)}USDT的奖励，交易哈希为${hash}，等待上链...`
+      `您正在领取${humanReadable(claim.usdt, UsdtPrecision)}USDT的奖励，交易哈希为${hash}，等待上链...`
     )
 
     return {
@@ -2150,7 +2150,7 @@ export default async function (fastify, opts) {
         from,
         MessageTypeConfirmClaim,
         '奖励领取',
-        `恭喜您成功领取了${humanReadable(mud.toString())}MUD，对应价值为${humanReadable(usdt.toString())}USDT，交易哈希为${hash}`
+        `恭喜您成功领取了${humanReadable(mud.toString())}MUD，对应价值为${humanReadable(usdt.toString(), UsdtPrecision)}USDT，交易哈希为${hash}`
       )
     })
     transaction()
