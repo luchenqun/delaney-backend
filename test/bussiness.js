@@ -218,7 +218,9 @@ const main = async () => {
 
   // 用户跟链交互复投（重新质押）
   if (true) {
+    await sleep(3000) // 上面复投了，不能马上取消质押
     {
+      // 需要产生区块改变区块时间
       const tx = await owner.sendTransaction({ to: owner.address, value: 1 })
       await tx.wait()
     }

@@ -1288,6 +1288,8 @@ export default async function (fastify, opts) {
           if (star == 1) {
             if (BigInt(user.sub_usdt) >= BigInt(config['team_level1_sub_usdt']) && BigInt(user.team_usdt) >= BigInt(config['team_level1_team_usdt'])) {
               user.star = star
+            } else {
+              user.star = 0
             }
           } else {
             const { total } = db.prepare('SELECT COUNT(*) total FROM user WHERE star >= ? AND parent = ?').get(star - 1, user.address)
