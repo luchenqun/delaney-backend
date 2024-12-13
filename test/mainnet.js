@@ -28,16 +28,13 @@ const sleep = (ms) => {
 }
 
 const main = async () => {
-  const poolArtifact = await fs.readJSON(path.join(contractDir, 'UniswapV3Pool.sol/UniswapV3Pool.json'))
-  const mudArtifact = await fs.readJSON(path.join(contractDir, 'MetaUserDAOToken.sol/MetaUserDAOToken.json'))
   const delaneyArtifact = await fs.readJSON(path.join(contractDir, 'Delaney.sol/Delaney.json'))
-  const { abi: poolAbi, bytecode: poolBytecode } = poolArtifact
-  const { abi: mudAbi, bytecode: mudBytecode } = mudArtifact
   const { abi: delaneyAbi, bytecode: delaneyBytecode } = delaneyArtifact
-  const poolAddress = '0x60D8A47c075E7E95cd58C7C5598208F58c89242C'
-  const mudAddress = '0x9922308f2d9202C0650347d06Cb2095F3dD234BE'
-  const delaneyAddress = '0x862b96e016eE458aEeBB48F1Cc7Bdccc33bbfB8C'
-  const delaneyDeploy = false
+
+  const delaneyAddress = '0xDad56A6B5eed8567Fc4395d05b59D15077c2c888'
+  const usdtAddress = '0x592d157a0765b43b0192Ba28F4b8cd4F50E326cF'
+  const pairAddress = '0x7F202fda32D43F726C77E2B3288e6c6f3e7e341A'
+  const delaneyDeploy = true
 
   const rpc = 'https://testnet-rpc.mud-chain.net'
   const provider = new ethers.JsonRpcProvider(rpc)
@@ -67,20 +64,11 @@ const main = async () => {
   ]
 
   // 部署合约
-
-  const pool = (await provider.getCode(poolAddress)).length > 2 ? new ethers.Contract(poolAddress, poolAbi, owner) : await deploy(owner, poolAbi, poolBytecode)
-  console.log('contract pool address = ', pool.target)
-
-  const mud = (await provider.getCode(mudAddress)).length > 2 ? new ethers.Contract(mudAddress, mudAbi, owner) : await deploy(owner, mudAbi, mudBytecode, [owner.address])
-  console.log('contract mud address = ', mud.target)
-
   let delaney
   if (delaneyDeploy) {
-    delaney = await deploy(owner, delaneyAbi, delaneyBytecode, [owner.address, owner.address, pool.target, mud.target])
-    console.log('contract delaney address = ', delaney.target)
+    delaney = await deploy(owner, delaneyAbi, delaneyBytecode, [owner.address, owner.address, pairAddress, usdtAddress])
   } else {
     delaney = new ethers.Contract(delaneyAddress, delaneyAbi, owner)
-    console.log('contract delaney address = ', delaney.target)
   }
 
   // 用户注册，我们要注册一个5层的用户列表，方便后面测试
@@ -125,22 +113,11 @@ const main = async () => {
     }
   }
 
-  // 质押之前，用户要给delaney合约授权扣除用户的mud
-  {
-    const deletagors = [delegator, owner]
-    for (const delegator of deletagors) {
-      let allowance = await mud.allowance(delegator.address, delaney.target)
-      if (allowance == 0n) {
-        const amount = 1000000000 * 1000000
-
-        const tx = await mud.connect(delegator).approve(delaney.target, amount)
-        await tx.wait()
-      }
-    }
-  }
-
   {
     let tx
+    tx = await delaney.setConfig('preson_invest_min_usdt', 1) // 个人最小投资额度
+    await tx.wait()
+
     tx = await delaney.setConfig('period_duration', 30) // 方便测试每个周期设为6秒
     await tx.wait()
 
@@ -168,10 +145,9 @@ const main = async () => {
     const deletagors = [delegator, owner]
     for (const delegator of deletagors) {
       // 发送交易
-      const mud = 1000 * 1000000
-      const min_usdt = 1 * 1000000
-      const deadline = 1888888888
-      const tx = await delaney.connect(delegator).delegate(mud, min_usdt, deadline)
+      const mud = 1n * 1000000000000000000n
+      const min_usdt = 1n * 1000000n
+      const tx = await delaney.connect(delegator).delegate(min_usdt, deadline, { value: mud })
 
       // 后台记录质押信息
       data = decodeReply(await client.post('/delegate', { hash: tx.hash }))
@@ -180,33 +156,10 @@ const main = async () => {
       // 等待交易上链
       await tx.wait()
 
-      // 给后台确认质押金额(不去确认我们也要可以)
+      // 给后台确认质押金额
       data = decodeReply(await client.post('/confirm-delegate', { hash: tx.hash }))
       console.log('confirm delegate', data)
     }
-  }
-
-  // 用户获取最新的奖励信息
-  {
-    await sleep(30000) // 等待30秒有静态奖励产出
-    data = decodeReply(await client.get(`/latest-claim?address=${owner.address}`))
-    console.log('latest-claim', data)
-
-    const { usdt, reward_ids } = data
-    const min_mud = 1
-    data = decodeReply(await client.post('/sign-claim', { address: owner.address, usdt, min_mud, reward_ids }))
-    console.log('sign-claim', data)
-
-    const { signature, deadline } = data
-    const tx = await delaney.connect(owner).claim(usdt, min_mud, JSON.stringify(reward_ids), signature, deadline)
-    console.log('call contract claim', tx.hash)
-
-    data = decodeReply(await client.post('/claim', { hash: tx.hash, signature }))
-    console.log('claim', data)
-
-    // 确认领取
-    data = decodeReply(await client.post(`/confirm-claim`, { hash: tx.hash }))
-    console.log('confirm-claim', data)
   }
 
   {

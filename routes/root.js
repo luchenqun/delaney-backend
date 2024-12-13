@@ -10,7 +10,6 @@ import {
   ErrorBusinessMsg,
   ErrorPermissionCode,
   ErrorPermissionMsg,
-  TokenWei,
   ReceiptFail
 } from '../utils/constant.js'
 import { DelegateStatusDelegating, DelegateStatusSuccess, DelegateStatusFail, DelegateStatusUndelegating, DelegateStatusWithdrew } from '../utils/constant.js'
