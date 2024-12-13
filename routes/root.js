@@ -949,7 +949,7 @@ export default async function (fastify, opts) {
     }
 
     // 禁止重复领取重新质押奖励
-    if (delegate.unlock_time >= unlock_time) {
+    if (delegate.unlock_time > unlock_time) {
       return {
         code: ErrorBusinessCode,
         msg: 'you delegate unlock time is great than ' + unlock_time,
