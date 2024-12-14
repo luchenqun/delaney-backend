@@ -1812,7 +1812,7 @@ export default async function (fastify, opts) {
     const transaction = db.transaction(() => {
       const info = db
         .prepare('INSERT INTO claim (address, usdt, min_mud, reward_ids, status, signature, deadline) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .run(address, usdt, min_mud, JSON.stringify(reward_ids), ClaimStatusReceiving, signature, deadline)
+        .run(address, usdt, String(min_mud), JSON.stringify(reward_ids), ClaimStatusReceiving, signature, deadline)
 
       if (Array.isArray(static_ids) && static_ids.length > 0) {
         let placeholders = static_ids.map(() => '?').join(', ')
