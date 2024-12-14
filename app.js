@@ -65,9 +65,9 @@ export default async function (fastify, opts) {
       fastify.scheduler.addSimpleIntervalJob(job)
 
       delaney.on('Delegate', (...args) => {
-        const [delegator, id, mud, usdt, unlock_time, event] = args
+        const [delegator, id, mud, usdt, unlock_time, product_id, event] = args
         const hash = event.log.transactionHash
-        console.log('Delegate log', { delegator, id, mud, usdt, unlock_time, hash })
+        console.log('Delegate log', { delegator, id, mud, usdt, unlock_time, product_id, hash })
         fastify
           .inject({
             method: 'POST',
