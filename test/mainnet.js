@@ -31,7 +31,7 @@ const main = async () => {
   const delaneyArtifact = await fs.readJSON(path.join(contractDir, 'Delaney.sol/Delaney.json'))
   const { abi: delaneyAbi, bytecode: delaneyBytecode } = delaneyArtifact
 
-  const delaneyAddress = '0xb88EA05A191b65a07A4D0bf0277ad0e79173edc8'
+  const delaneyAddress = '0xb97D47317eB4fC636f0816007EE3289ab4E25D07'
   const pairAddress = '0x7F202fda32D43F726C77E2B3288e6c6f3e7e341A'
   const usdtAddress = '0x592d157a0765b43b0192Ba28F4b8cd4F50E326cF'
 
