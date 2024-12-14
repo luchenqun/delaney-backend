@@ -31,7 +31,7 @@ const main = async () => {
   const delaneyArtifact = await fs.readJSON(path.join(contractDir, 'Delaney.sol/Delaney.json'))
   const { abi: delaneyAbi, bytecode: delaneyBytecode } = delaneyArtifact
 
-  const delaneyAddress = '0x65a745847aA50Ba631e4fa0Fa2d88E9E8b5F734B'
+  const delaneyAddress = '0xb88EA05A191b65a07A4D0bf0277ad0e79173edc8'
   const pairAddress = '0x7F202fda32D43F726C77E2B3288e6c6f3e7e341A'
   const usdtAddress = '0x592d157a0765b43b0192Ba28F4b8cd4F50E326cF'
 
@@ -73,10 +73,6 @@ const main = async () => {
   } else {
     delaney = new ethers.Contract(delaneyAddress, delaneyAbi, owner)
   }
-
-  data = decodeReply(await client.post('/confirm-delegate', { hash: '0x11759ad5400b23c1bdcfd43b82df4e18226da0ba383f103176fd2d76c9945a73' }))
-  console.log('confirm delegate', data)
-  return
 
   // 用户注册，我们要注册一个5层的用户列表，方便后面测试
   let parent_ref = '888888'
