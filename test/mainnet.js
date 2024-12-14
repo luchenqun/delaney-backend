@@ -31,7 +31,7 @@ const main = async () => {
   const delaneyArtifact = await fs.readJSON(path.join(contractDir, 'Delaney.sol/Delaney.json'))
   const { abi: delaneyAbi, bytecode: delaneyBytecode } = delaneyArtifact
 
-  const delaneyAddress = '0x7198751f431C6395c901b64b94477AC6A92083db'
+  const delaneyAddress = '0x65a745847aA50Ba631e4fa0Fa2d88E9E8b5F734B'
   const pairAddress = '0x7F202fda32D43F726C77E2B3288e6c6f3e7e341A'
   const usdtAddress = '0x592d157a0765b43b0192Ba28F4b8cd4F50E326cF'
 
@@ -74,16 +74,14 @@ const main = async () => {
     delaney = new ethers.Contract(delaneyAddress, delaneyAbi, owner)
   }
 
-  const tx = await delaney.setConfig('claim_min_usdt', 10000000) // 个人最小投资额度
-  await tx.wait()
-
+  data = decodeReply(await client.post('/confirm-delegate', { hash: tx.hash }))
+  console.log('confirm delegate', data)
   return
 
   // 用户注册，我们要注册一个5层的用户列表，方便后面测试
   let parent_ref = '888888'
   let needSetStar = true
   for (const privateKey of privateKeys) {
-    break
     const delegator = new ethers.Wallet(privateKey, provider)
     try {
       // 查一下有没有这个用户，有就不要注册了
@@ -99,7 +97,7 @@ const main = async () => {
   }
 
   // 修改星级，为后面的奖励分配做好准备
-  if (needSetStar && false) {
+  if (needSetStar) {
     let star = 5
     let delegatorPrivateKeys = [privateKey].concat(...privateKeys)
     const message = String(parseInt(new Date().getTime() / 1000))
@@ -172,8 +170,8 @@ const main = async () => {
   }
 
   {
-    const tx = await delaney.setConfig('period_duration', 180) // 恢复周期设为180秒
-    await tx.wait()
+    // const tx = await delaney.setConfig('period_duration', 180) // 恢复周期设为180秒
+    // await tx.wait()
   }
 }
 

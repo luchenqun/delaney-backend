@@ -119,6 +119,25 @@
       {
         "indexed": true,
         "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "isClearing",
+        "type": "bool"
+      }
+    ],
+    "name": "Clear",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
         "name": "delegator",
         "type": "address"
       },
@@ -144,6 +163,12 @@
         "indexed": false,
         "internalType": "uint256",
         "name": "unlockTime",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "productId",
         "type": "uint256"
       }
     ],
@@ -464,6 +489,19 @@
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "clearing",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "string",
@@ -578,6 +616,11 @@
         "internalType": "bool",
         "name": "withdrew",
         "type": "bool"
+      },
+      {
+        "internalType": "uint256",
+        "name": "productId",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -592,12 +635,93 @@
   },
   {
     "inputs": [],
+    "name": "endClear",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "getConfigs",
     "outputs": [
       {
         "internalType": "uint256[]",
         "name": "",
         "type": "uint256[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "historyStats",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "delegateCount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "delegateUsdt",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "delegateMud",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "claimCount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "claimUsdt",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "claimMud",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "undelegateCount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "undelegateUsdt",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "undelegateMud",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "depositMud",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "profitMud",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "productId",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -690,6 +814,25 @@
   {
     "inputs": [],
     "name": "paused",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "productCleared",
     "outputs": [
       {
         "internalType": "bool",
@@ -843,6 +986,13 @@
   },
   {
     "inputs": [],
+    "name": "startClear",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "stat",
     "outputs": [
       {
@@ -898,6 +1048,11 @@
       {
         "internalType": "uint256",
         "name": "profitMud",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "productId",
         "type": "uint256"
       }
     ],
