@@ -74,7 +74,7 @@ const main = async () => {
     delaney = new ethers.Contract(delaneyAddress, delaneyAbi, owner)
   }
 
-  data = decodeReply(await client.post('/confirm-delegate', { hash: tx.hash }))
+  data = decodeReply(await client.post('/confirm-delegate', { hash: '0x85e129d5625210d9e09e4d47dc29d918275cbc3dd51510525e46f6a2e431130f' }))
   console.log('confirm delegate', data)
   return
 

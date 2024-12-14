@@ -806,7 +806,6 @@ export default async function (fastify, opts) {
       }
 
       // 上级用户信息更新：团队星级，直推以及团队的mud/usdt的更新
-      console.log('----->parent: ', parents)
       for (let i = 0; i < parents.length; i++) {
         const user = parents[i]
         // 第一个节点累计直推金额
