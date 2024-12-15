@@ -158,7 +158,7 @@ const main = async () => {
     tx = await delaney.setConfig('period_num', 3) // 方便测试一共3周期
     await tx.wait()
 
-    tx = await delaney.setConfig('preson_reward_min_usdt', 0) // 个人奖励阈值
+    tx = await delaney.setConfig('person_reward_min_usdt', 0) // 个人奖励阈值
     await tx.wait()
 
     tx = await delaney.setConfig('team_reward_min_usdt', 0) // 团队奖励阈值

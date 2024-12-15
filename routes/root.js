@@ -721,7 +721,7 @@ export default async function (fastify, opts) {
         for (let i = 0; i < RewardMaxDepth; i++) {
           const user = parents[i]
           // 个人投资额度需要大于某个数才能获取个人奖励
-          if (BigInt(user.usdt) >= BigInt(config['preson_reward_min_usdt'])) {
+          if (BigInt(user.usdt) >= BigInt(config['person_reward_min_usdt'])) {
             const reward_usdt = (BigInt(config[RewardPersonKey + (i + 1)]) * usdt) / BigInt(100)
             db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?, ?)').run(
               delegate.id,
@@ -1019,7 +1019,7 @@ export default async function (fastify, opts) {
         for (let i = 0; i < RewardMaxDepth; i++) {
           const user = parents[i]
           // 个人投资额度需要大于某个数才能获取个人奖励
-          if (BigInt(user.usdt) >= BigInt(config['preson_reward_min_usdt'])) {
+          if (BigInt(user.usdt) >= BigInt(config['person_reward_min_usdt'])) {
             const reward_usdt = (BigInt(config[RewardPersonKey + (i + 1)]) * usdt) / BigInt(100)
             db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?, ?)').run(
               delegate.id,
@@ -1691,6 +1691,8 @@ export default async function (fastify, opts) {
       }
     }
 
+    const config = await getConfigs()
+    const claim_max_usdt = BigInt(config['claim_max_usdt'])
     let tatal_usdt = BigInt(0)
 
     // 计算静态奖励
@@ -1698,6 +1700,9 @@ export default async function (fastify, opts) {
     const static_rewards = db.prepare(`SELECT id, usdt FROM static_reward WHERE address = ? AND status = ? AND unlock_time < strftime('%s', 'now')`).all(address, RewardUnclaim)
     for (const reward of static_rewards) {
       const { id, usdt } = reward
+      if (tatal_usdt + BigInt(usdt) > claim_max_usdt) {
+        break
+      }
       static_reward_ids.push(id)
       tatal_usdt += BigInt(usdt)
     }
@@ -1707,6 +1712,9 @@ export default async function (fastify, opts) {
     const dynamic_rewards = db.prepare(`SELECT id, usdt FROM dynamic_reward WHERE address = ? AND status = ?`).all(address, RewardUnclaim)
     for (const reward of dynamic_rewards) {
       const { id, usdt } = reward
+      if (tatal_usdt + BigInt(usdt) > claim_max_usdt) {
+        break
+      }
       dynamic_reward_ids.push(id)
       tatal_usdt += BigInt(usdt)
     }
@@ -1793,7 +1801,6 @@ export default async function (fastify, opts) {
       }
     }
 
-    console.log({ total_usdt, usdt })
     if (total_usdt !== parseInt(usdt)) {
       return {
         code: ErrorBusinessCode,

@@ -118,7 +118,7 @@ const main = async () => {
 
   // {
   //   let tx
-  //   tx = await delaney.setConfig('preson_invest_min_usdt', 1) // 个人最小投资额度
+  //   tx = await delaney.setConfig('person_invest_min_usdt', 1) // 个人最小投资额度
   //   await tx.wait()
 
   //   tx = await delaney.setConfig('period_duration', 30) // 方便测试每个周期设为6秒
@@ -127,7 +127,7 @@ const main = async () => {
   //   tx = await delaney.setConfig('period_num', 3) // 方便测试一共3周期
   //   await tx.wait()
 
-  //   tx = await delaney.setConfig('preson_reward_min_usdt', 0) // 个人奖励阈值
+  //   tx = await delaney.setConfig('person_reward_min_usdt', 0) // 个人奖励阈值
   //   await tx.wait()
 
   //   tx = await delaney.setConfig('team_reward_min_usdt', 0) // 团队奖励阈值
