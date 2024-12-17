@@ -1,5 +1,7 @@
 import { ethers, ZeroAddress, ZeroHash, Wallet } from 'ethers'
 import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone.js'
+import utc from 'dayjs/plugin/utc.js'
 import { pageSql, getConfigs, recoverAddress, authorizationCheck, humanReadable } from '../utils/index.js'
 import {
   ErrorInputCode,
@@ -30,6 +32,9 @@ import {
   MessageTypeRiseStar
 } from '../utils/constant.js'
 import { randRef, rpc, provider, delaney, delaneyAddress, usdtAddress, signerPrivateKey, signerAddress, now, adminAddressList } from '../utils/index.js'
+
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
 const UsdtPrecision = 1000000n
 const MudPrecision = 1000000000000000000n
@@ -801,6 +806,7 @@ export default async function (fastify, opts) {
           '奖励',
           `恭喜您质押${humanReadable(mud.toString())}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt.toString(), UsdtPrecision)}USDT，解锁时间为 ${dayjs
             .unix(reward_unlock_time)
+            .tz('Asia/Shanghai')
             .format('YYYY-MM-DD HH:mm:ss')}`
         )
       }
@@ -1099,6 +1105,7 @@ export default async function (fastify, opts) {
           '奖励',
           `恭喜您复投${humanReadable(mud.toString())}MUD成功，获得第${period}期的奖励${humanReadable(reward_usdt.toString(), UsdtPrecision)}USDT，解锁时间为 ${dayjs
             .unix(reward_unlock_time)
+            .tz('Asia/Shanghai')
             .format('YYYY-MM-DD HH:mm:ss')}`
         )
       }
