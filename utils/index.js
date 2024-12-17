@@ -2,6 +2,7 @@ import { ethers } from 'ethers'
 import bn from 'bignumber.js'
 import fs from 'fs-extra'
 import { ReceiptFail } from './constant.js'
+import BigNumber from 'bignumber.js'
 
 const SevenDaySeconds = 7 * 24 * 3600
 const { rpc, usdtAddress, delaneyAddress, signerPrivateKey, adminAddressList } = fs.readJSONSync('config.json')
@@ -105,13 +106,10 @@ export const recoverAddress = (signature, message) => {
   return signer
 }
 
-export const humanReadable = (value, precision = 1000000000000000000n) => {
-  value = BigInt(value)
-  const result = ((value * 100n) / precision).toString() // 将结果扩大100倍以保留两位小数
-  const integerPart = result.slice(0, -2) || '0' // 获取整数部分
-  const decimalPart = result.slice(-2) // 获取小数部分
-
-  return decimalPart === '00' ? integerPart : `${integerPart}.${decimalPart}`
+export const humanReadable = (value, precision = 1000000000000000000n, property = BigNumber.ROUND_DOWN) => {
+  const b = new BigNumber(value)
+  const result = b.dividedBy(precision).toFixed(2, property)
+  return result
 }
 
 export const authorizationCheck = (value, users) => {
