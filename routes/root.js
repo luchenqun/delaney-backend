@@ -651,6 +651,7 @@ export default async function (fastify, opts) {
     const period_duration = parseInt(periodDuration)
     const period_num = parseInt(periodNum)
     const unlock_time = parseInt(unlockTime)
+    const delegate_time = unlock_time - period_duration * period_num
 
     // 如果已经取消质押了，那么不再分发奖励
     if (withdrew) {
@@ -728,9 +729,10 @@ export default async function (fastify, opts) {
           // 个人投资额度需要大于某个数才能获取个人奖励
           if (BigInt(user.usdt) >= BigInt(config['person_reward_min_usdt'])) {
             const reward_usdt = (BigInt(config[RewardPersonKey + (i + 1)]) * usdt) / BigInt(100)
-            db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?, ?)').run(
+            db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, delegate_time, address, usdt, type) VALUES (?, ?, ?, ?, ?, ?)').run(
               delegate.id,
               from,
+              delegate_time,
               user.address,
               reward_usdt.toString(),
               RewardTypePerson
@@ -760,9 +762,10 @@ export default async function (fastify, opts) {
           const cur_ratio = BigInt(config[RewardTeamKey + star]) // 每个星级奖励多少
           const team_ratio = cur_ratio - pre_raito // 需要扣除给手下的，实际奖励多少
           const reward_usdt = (team_ratio * usdt) / BigInt(100)
-          db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?, ?)').run(
+          db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, delegate_time, address, usdt, type) VALUES (?, ?, ?, ?, ?, ?)').run(
             delegate.id,
             from,
+            delegate_time,
             user.address,
             reward_usdt.toString(),
             RewardTypeTeam
@@ -793,11 +796,12 @@ export default async function (fastify, opts) {
         const period = i + 1
         const reward_unlock_time = unlock_time - period_duration * (period_num - period)
         const reward_usdt = (BigInt(config['period_reward_ratio']) * usdt) / BigInt(100)
-        db.prepare('INSERT INTO static_reward (delegate_id, period, address, usdt, unlock_time) VALUES (?, ?, ?, ?, ?)').run(
+        db.prepare('INSERT INTO static_reward (delegate_id, period, address, usdt, delegate_time, unlock_time) VALUES (?, ?, ?, ?, ?, ?)').run(
           delegate.id,
           period,
           from,
           reward_usdt.toString(),
+          delegate_time,
           reward_unlock_time
         )
         db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
@@ -944,7 +948,7 @@ export default async function (fastify, opts) {
     const period_duration = parseInt(periodDuration)
     const period_num = parseInt(periodNum)
     const unlock_time = parseInt(unlockTime)
-
+    const delegate_time = unlock_time - period_duration * period_num
     // 交易失败什么也不需要做
     if (receipt.status == ReceiptFail) {
       db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
@@ -1027,9 +1031,10 @@ export default async function (fastify, opts) {
           // 个人投资额度需要大于某个数才能获取个人奖励
           if (BigInt(user.usdt) >= BigInt(config['person_reward_min_usdt'])) {
             const reward_usdt = (BigInt(config[RewardPersonKey + (i + 1)]) * usdt) / BigInt(100)
-            db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?, ?)').run(
+            db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, delegate_time, address, usdt, type) VALUES (?, ?, ?, ?, ?, ?)').run(
               delegate.id,
               from,
+              delegate_time,
               user.address,
               reward_usdt.toString(),
               RewardTypePerson
@@ -1059,9 +1064,10 @@ export default async function (fastify, opts) {
           const cur_ratio = BigInt(config[RewardTeamKey + star]) // 每个星级奖励多少
           const team_ratio = cur_ratio - pre_raito // 需要扣除给手下的，实际奖励多少
           const reward_usdt = (team_ratio * usdt) / BigInt(100)
-          db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, address, usdt, type) VALUES (?, ?, ?, ?, ?)').run(
+          db.prepare('INSERT INTO dynamic_reward (delegate_id, delegator, delegate_time, address, usdt, type) VALUES (?, ?, ?, ?, ?, ?)').run(
             delegate.id,
             from,
+            delegate_time,
             user.address,
             reward_usdt.toString(),
             RewardTypeTeam
@@ -1092,11 +1098,12 @@ export default async function (fastify, opts) {
         const period = i + 1
         const reward_unlock_time = unlock_time - period_duration * (period_num - period)
         const reward_usdt = (BigInt(config['period_reward_ratio']) * usdt) / BigInt(100)
-        db.prepare('INSERT INTO static_reward (delegate_id, period, address, usdt, unlock_time) VALUES (?, ?, ?, ?, ?)').run(
+        db.prepare('INSERT INTO static_reward (delegate_id, period, address, usdt, delegate_time, unlock_time) VALUES (?, ?, ?, ?, ?, ?)').run(
           delegate.id,
           period,
           from,
           reward_usdt.toString(),
+          delegate_time,
           reward_unlock_time
         )
         db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
@@ -2158,6 +2165,12 @@ export default async function (fastify, opts) {
       if (Array.isArray(dynamic_ids) && dynamic_ids.length > 0) {
         db.prepare(`UPDATE dynamic_reward SET status = ?, hash = ? WHERE id IN (${dynamic_ids.map(() => '?').join(', ')})`).run(RewardClaimed, hash, ...dynamic_ids)
       }
+
+      // 更新用户领取的奖励，进行累加
+      const user = db.prepare('SELECT claim_mud, claim_usdt FROM user WHERE address = ?').get(from)
+      const claim_mud = (BigInt(user.claim_mud) + mud).toString()
+      const claim_usdt = (BigInt(user.claim_usdt) + usdt).toString()
+      db.prepare('UPDATE user SET claim_mud = ?, claim_usdt = ? WHERE address = ?').run(claim_mud, claim_usdt, from)
 
       db.prepare('INSERT INTO message (address, type, title, content) VALUES (?, ?, ?, ?)').run(
         from,
